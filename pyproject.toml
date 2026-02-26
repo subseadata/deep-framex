@@ -1,0 +1,12 @@
+[project]
+name = "soi-frame-extractor"
+version = "0.1.0"
+description = "Library for frame extraction from deep sea video"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling"
