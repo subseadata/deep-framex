@@ -28,7 +28,7 @@ class CustomBaseModel(BaseModel):
 class VideoFile(CustomBaseModel):
     path: Path
     utc_start: datetime
-    duration: timedelta | None = None  # populated by video_reader on open
+    duration: timedelta 
 
 
 class Video(CustomBaseModel):
