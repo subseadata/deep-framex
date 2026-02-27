@@ -11,15 +11,16 @@ Frame extraction library for deep sea video.  Frames are self-describing — met
 ```
 src/soi_frame_extractor/
 ├── models/          # pydantic data models
-├── data/            # CSV import, clean process, plot data for selection 
-├── planning/        # translate intervals, periods, sensor constraints into extraction input 
+├── config/          # YAML spec parsing and video file discovery
+├── data/            # CSV import, clean process, plot data for selection
+├── planning/        # translate intervals, periods, sensor constraints into extraction input
 ├── extraction/      # read frames from video or pre-computed cache
 ├── cache/           # handles cache sampling and indexing functions
 ├── metadata/        # attach metadata and geospatial data to frames
 ├── output/          # write frames to disk or cloud storage
 ├── analysis/        # score frames for analysis or quality
 ├── viz/             # frame overlay, map view
-└── utils/           # shared helpers (time conversion, image format, config)
+└── utils/           # shared helpers (time conversion, image format)
 ```
 
 ## User Story Functionality (I want to...)
@@ -53,6 +54,13 @@ src/soi_frame_extractor/
 - everything downstream depends on this being right [how do we handle bad sync events? manual override?]
 - alignment point:
     - assume video is authoritative? 
+
+### user ingress
+- accepts a YAML config file defining one or more extraction rules (interval + optional UTC time periods)
+- accepts video source as either a directory or an explicit list of file paths
+- validates all datetimes as ISO 8601 UTC; rejects naive timestamps
+- resolves video paths and probes each file for metadata (utc_start, duration)
+- produces an ExtractionSpec and VideoSession ready for the planner
 
 ### extraction planner
 - converts intervals, periods, fps, and data constraint to an extraction spec, then to timestamps 
