@@ -3,13 +3,15 @@
 Extracts a set of frames from a video file, based on input timestamps
 """
 
-from datetime import time
+from datetime import datetime
 import numpy as np
-# bring in videosession class from models
+
+from ..models.models import VideoSession
+
 
 def extract_frames(
         session: VideoSession,
-        times: list[time]) -> list[np.ndarray]:
+        times: list[datetime]) -> list[np.ndarray]:
     """Extract frames from a video session at specific times.
 
     Returns one (H, W, 3) uint8 RGB frame per entry in times, in the same
@@ -17,12 +19,12 @@ def extract_frames(
 
     Args:
         session (VideoSession): video session to sample
-        times (list[time]): list of times for frame extraction
+        times (list[datetime]): list of UTC datetimes for frame extraction
 
     Returns:
         List of (H, W, 3) uint8 RGB numpy arrays, one per requested time.
 
     Raises:
-        TypeError: if times is not a list of datetime.time values
+        TypeError: if times is not a list of datetime values
     """
     pass
