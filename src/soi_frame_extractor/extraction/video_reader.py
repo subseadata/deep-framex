@@ -1,22 +1,26 @@
 """Video reader
 
-Opens a video file into a PyAV container for use by VideoSession.
+Takes a VideoFile and opens it into a PyAV container, returning a Video object
+ready for use by VideoSession.
 """
 
 import av
-from pathlib import Path
+
+from ..models.models import Video, VideoFile
 
 
-def open_video(path: Path) -> av.container.InputContainer:
-    """Open a video file and return a PyAV container.
+def open_video(video_file: VideoFile) -> Video:
+    """Open a VideoFile into a PyAV container and return a Video.
+
+    Populates VideoFile.duration from the container on open.
 
     Args:
-        path (Path): path to the video file.
+        video_file (VideoFile): video file metadata including path and utc_start.
 
     Returns:
-        Open PyAV InputContainer.
+        Video containing the VideoFile and its open PyAV container.
 
     Raises:
-        FileNotFoundError: if path does not exist.
+        FileNotFoundError: if video_file.path does not exist.
     """
     pass

@@ -3,37 +3,50 @@
 All core data structures used across the library are defined here.
 """
 
-from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+import av from numpy.typing import NDArray
+from pydantic import BaseModel, ConfigDict
 
-from numpy.typing import NDArray
-from pydantic import BaseModel
+# TODO: add @field_validator for arbitrary types once dependencies are installed:
+#   - Video.container (av.container.InputContainer) — check open, has video stream
+#   - ExtractedFrame.frame (NDArray) — check ndim==3, shape[2]==3, dtype==uint8
+
+
+class CustomBaseModel(BaseModel):
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        validate_assignment=True,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Video input models
 # ---------------------------------------------------------------------------
 
-class VideoFile(BaseModel):
+class VideoFile(CustomBaseModel):
     path: Path
     utc_start: datetime
     duration: timedelta | None = None  # populated by video_reader on open
 
 
-class VideoSession(BaseModel):
-    files: list[VideoFile]
+class Video(CustomBaseModel):
+    file: VideoFile
+    container: av.container.InputContainer
+
+
+class VideoSession(CustomBaseModel):
+    videos: list[Video]                 # ordered by utc_start
 
 
 # ---------------------------------------------------------------------------
 # Frame output models
 # ---------------------------------------------------------------------------
 
-class FrameMetadata(BaseModel):
+class FrameMetadata(CustomBaseModel):
     pass  # fields TBD
 
 
-@dataclass
-class ExtractedFrame:
-    frame: NDArray          # (H, W, 3) uint8 RGB
+class ExtractedFrame(CustomBaseModel):
+    frame: NDArray                      # (H, W, 3) uint8 RGB
     metadata: FrameMetadata
