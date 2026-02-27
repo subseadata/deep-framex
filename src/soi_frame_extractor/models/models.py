@@ -37,7 +37,30 @@ class Video(CustomBaseModel):
 
 
 class VideoSession(CustomBaseModel):
-    videos: list[Video]                 # ordered by utc_start
+    videos: list[VideoFile]             # ordered by utc_start
+
+
+# ---------------------------------------------------------------------------
+# Extraction planning models
+# ---------------------------------------------------------------------------
+
+class TimePeriod(CustomBaseModel):
+    start: datetime
+    end: datetime
+
+
+class ExtractionRule(CustomBaseModel):
+    interval_s: float
+    periods: list[TimePeriod] = []      # if empty, rule applies to full session
+
+
+class ExtractionSpec(CustomBaseModel):
+    rules: list[ExtractionRule]
+
+
+class VideoExtractionPlan(CustomBaseModel):
+    video_file: VideoFile
+    offsets_s: list[float]              # seconds from t=0, sorted ascending
 
 
 # ---------------------------------------------------------------------------

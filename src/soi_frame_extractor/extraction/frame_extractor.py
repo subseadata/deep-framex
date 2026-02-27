@@ -1,30 +1,33 @@
 """Frame extractor function
 
-Extracts a set of frames from a video file, based on input timestamps
+Extracts frames from video files at pre-planned offsets.
 """
 
-from datetime import datetime
 import numpy as np
 
-from ..models.models import VideoSession
+from ..models.models import VideoExtractionPlan
 
 
-def extract_frames(
-        session: VideoSession,
-        times: list[datetime]) -> list[np.ndarray]:
-    """Extract frames from a video session at specific times.
+def extract_frames(planned: list[VideoExtractionPlan]) -> list[np.ndarray]:
+    """Extract frames from video files at pre-planned offsets.
 
-    Returns one (H, W, 3) uint8 RGB frame per entry in times, in the same
-    order. Callers are responsible for associating frames back to timestamps.
+    For each VideoExtractionPlan, opens the video container once, seeks to
+    each offset in order, grabs the frame, then closes before moving to the
+    next video.
 
     Args:
-        session (VideoSession): video session to sample
-        times (list[datetime]): list of UTC datetimes for frame extraction
+        planned: List of VideoExtractionPlan objects, each containing a
+                 VideoFile and sorted list of offsets in seconds from t=0.
 
     Returns:
-        List of (H, W, 3) uint8 RGB numpy arrays, one per requested time.
-
-    Raises:
-        TypeError: if times is not a list of datetime values
+        List of (H, W, 3) uint8 RGB numpy arrays in the order they were
+        planned across all videos.
     """
+    # for each plan:
+    #   open av container for plan.video_file.path
+    #   for each offset in plan.offsets_s:
+    #     seek to offset
+    #     decode and grab first frame
+    #     append to results
+    #   close container
     pass
