@@ -5,7 +5,8 @@ All core data structures used across the library are defined here.
 
 from datetime import datetime, timedelta
 from pathlib import Path
-import av from numpy.typing import NDArray
+import av
+from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict
 
 # TODO: add @field_validator for arbitrary types once dependencies are installed:
