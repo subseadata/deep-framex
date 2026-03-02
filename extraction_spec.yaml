@@ -1,0 +1,36 @@
+# Example extraction spec for soi-frame-extractor
+#
+# ExtractionSpec model in models.py contains specifics
+#
+# Every ruleset must have
+#   interval_s
+#
+# Optional ruleset arguments
+#   periods
+#
+#
+# Usage:
+# TODO cli example of usage
+
+
+# Time-constrained extraction examples:
+# each can be used individually or you can mix rule conditions,
+# the parser will translate complex rules to the extraction spec
+rules:
+
+  # extract 1 frame every 10s for the entire video
+  - interval_s: 10.0
+
+  # extract 1 frame every 2 seconds during a specific UTC window (ISO8601 timestamps required, UTC recommended)
+  - interval_s: 2.0
+    periods:
+      - start: "2025-11-15T10:25:00Z"
+        end:   "2025-11-15T10:30:00Z"
+
+  # extract 1 frame every 30 seconds during another time window that overlaps with the 10s example
+  - interval_s: 30.0
+    periods:
+      - start: "2025-11-15T10:20:00Z"
+        end:   "2025-11-15T10:50:00Z"
+
+# TODO data-informed extraction rules
