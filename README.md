@@ -4,7 +4,37 @@ Frame extraction library for deep sea video.  Frames are self-describing — met
 
 ## Installation and Use
 
-...
+```
+pip install soi-frame-extractor
+```
+
+Run from the command line:
+
+```
+soi-extract <source> --spec <yaml> [--output <dir>]
+```
+
+- `source`  path to a directory of video files, or one or more explicit video file paths
+- `--spec`  path to a YAML extraction spec (required)
+- `--output`  directory to write extracted frames (default: `./frames`)
+
+### Extraction spec
+
+The spec defines one or more extraction rules. Each rule requires an interval and optionally one or more UTC time periods. If no periods are given, the rule applies to the full session.
+
+```yaml
+rules:
+  # 1 frame every 10 seconds for the entire session
+  - interval_s: 10.0
+
+  # 1 frame every 2 seconds during a specific UTC window
+  - interval_s: 2.0
+    periods:
+      - start: "2025-11-15T10:25:00Z"
+        end:   "2025-11-15T10:30:00Z"
+```
+
+All timestamps must be ISO 8601 with an explicit UTC offset (`Z` or `+00:00`). Multiple rules can overlap, the planner deduplicates and sorts offsets before extraction.
 
 ## Structure
 
