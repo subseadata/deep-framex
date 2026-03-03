@@ -143,3 +143,29 @@ class FrameMetadata(CustomBaseModel):
 class ExtractedFrame(CustomBaseModel):
     frame: NDArray                      # (H, W, 3) uint8 RGB
     metadata: FrameMetadata
+
+
+# ---------------------------------------------------------------------------
+# Metadata routing
+# ---------------------------------------------------------------------------
+
+class MetadataDestination(CustomBaseModel):
+    """Prescribed metadata layer destinations for a canonical field.
+
+    Describes which tag or property name to use in each metadata standard.
+    A None value for a layer means the field is not written there.
+    Tag and property names follow the conventions of each standard and are
+    resolved by the metadata writer at write time.
+    """
+    exif: str | None = None
+    iptc: str | None = None
+    xmp: str | None = None
+    ifdo: str | None = None
+
+
+# Maps canonical field names to their prescribed metadata destinations.
+# The metadata writer consults this to route known fields to the correct
+# layer and tag.  Anything not in this registry goes to XMP under its
+# original column name.  Populated at implementation time once tag
+# references are confirmed against each standard.
+FIELD_REGISTRY: dict[str, MetadataDestination] = {}
