@@ -20,7 +20,7 @@ soi-extract <source> --spec <yaml> [--output <dir>]
 
 ### Extraction spec
 
-The spec defines one or more extraction rules. Each rule requires an interval and optionally one or more UTC time periods. If no periods are given, the rule applies to the full session.
+The spec defines one or more extraction rules plus optional sensor column mappings and project metadata.  Each rule requires an interval and optionally UTC time periods, sensor constraints, or both.  If no periods or constraints are given, the rule applies to the full session.
 
 ```yaml
 rules:
@@ -32,18 +32,50 @@ rules:
     periods:
       - start: "2025-11-15T10:25:00Z"
         end:   "2025-11-15T10:30:00Z"
+
+  # 1 frame every 5 seconds while depth is between 1000 and 1200 m
+  - interval_s: 5.0
+    constraints:
+      - column: depth
+        min: 1000
+        max: 1200
+
+  # periods and constraints on the same rule intersect:
+  # 1 frame every 2 seconds during the UTC window AND while below 500 m
+  - interval_s: 2.0
+    periods:
+      - start: "2025-11-15T10:25:00Z"
+        end:   "2025-11-15T10:30:00Z"
+    constraints:
+      - column: depth
+        max: 500
+
+mappings:                    # omit entirely if no sensor CSV is provided
+  timestamp: utc_time        # required if mappings is present
+  latitude:  lat             # optional — enables GPS metadata in output frames
+  longitude: lon             # optional
+  depth:     z               # optional
+  temp:      temperature_c   # any additional columns are accepted
+
+metadata:                    # optional — arbitrary key/value pairs
+  cruise_id: FK250101        # written to XMP and iFDO in all output frames
+  dive_id:   S0042
+  vehicle:   SuBastian
 ```
 
-All timestamps must be ISO 8601 with an explicit UTC offset (`Z` or `+00:00`). Multiple rules can overlap, the planner deduplicates and sorts offsets before extraction.
+All timestamps must be ISO 8601 with an explicit UTC offset (`Z` or `+00:00`).
+
+**Rule composition:** periods and constraints on the *same* rule intersect — frames are only extracted where all conditions are simultaneously met.  Separate rules are unioned — each rule contributes its timestamps independently and the planner deduplicates before extraction.
 
 ## Structure
 
 ```
 src/soi_frame_extractor/
-├── models/          # pydantic data models
+├── models/          # pydantic data models and metadata field registry
 ├── config/          # YAML spec parsing and video file discovery
 ├── data/            # CSV import, clean process, plot data for selection
-├── planning/        # translate intervals, periods, sensor constraints into extraction input
+├── db/              # session SQLite (in-memory) — sensor readings and frame plan
+├── planning/        # translate intervals, periods, sensor constraints into extraction offsets
 ├── extraction/      # read frames from video or pre-computed cache
 ├── cache/           # handles cache sampling and indexing functions
 ├── metadata/        # attach metadata and geospatial data to frames
@@ -74,10 +106,18 @@ src/soi_frame_extractor/
 ## Function Map
 
 ### data importer
-- loads CSV files from local path or cloud URI
-- parses and validates timestamp column
-- returns a time-indexed dataset for use in planning and enrichment
-- no assumptions about what columns are present beyond a timestamp
+- loads a CSV file from a local path
+- validates column names as legal identifiers; rejects non-float data columns
+- writes all rows into the session database `sensor_readings` table under a dynamically-built schema matching the CSV headers
+- timestamp column is required and named explicitly by the user in the YAML `mappings:` block
+- no assumptions about which sensor columns are present — one or thirty are equally valid
+- returns an `ImportedDataset` describing available columns and time range
+
+### session database
+- holds two tables for the duration of one extraction run, then is discarded
+- `sensor_readings` — all CSV rows indexed by timestamp (Unix epoch float); schema built dynamically from CSV headers at import time
+- `frame_plan` — one row per frame to extract; carries status (`planned → extracted → written`) and a `sensor_snapshot` JSON blob of interpolated sensor values at that timestamp
+- downstream stages (metadata writer, frame writer) read from `frame_plan` only — they never re-query `sensor_readings`
 
 ### timestamp correlator
 - aligns separate time references into one: sensor/data UTC, video UTC, video time *(t=0 at start->end)*
@@ -86,16 +126,19 @@ src/soi_frame_extractor/
     - assume video is authoritative? 
 
 ### user ingress
-- accepts a YAML config file defining one or more extraction rules (interval + optional UTC time periods)
+- accepts a YAML config file defining rules, optional sensor mappings, and optional project metadata
 - accepts video source as either a directory or an explicit list of file paths
+- accepts an optional sensor CSV; if provided, loads it into the session database via the data importer
 - validates all datetimes as ISO 8601 UTC; rejects naive timestamps
 - resolves video paths and probes each file for metadata (utc_start, duration)
 - produces an ExtractionSpec and VideoSession ready for the planner
 
 ### extraction planner
-- converts intervals, periods, fps, and data constraint to an extraction spec, then to timestamps 
-- all the logic for intervals, time windows, environmental conditions, and combinations lives here
-- checks the frame cache first — if pre-computed frames exist at the right rate, get those instead of extracting new ones from video
+- processes each rule independently against the session database
+- per rule: starts with the full session, intersects UTC periods if present, intersects sensor constraint windows if present, then samples at interval_s
+- sensor constraint windows are resolved by querying `sensor_readings` for time ranges where conditions are met
+- interpolates sensor values at each planned timestamp and writes them as a JSON snapshot into `frame_plan`
+- across rules: timestamps are unioned and deduplicated before extraction
 - the extractor never sees rules, only timestamps
 
 ### extractor
@@ -113,9 +156,9 @@ src/soi_frame_extractor/
 - returns which requested timestamps are available and which need extraction
 
 ### metadata collector
-- gathers contextual values for a frame: timestamp, dive ID, cruise ID, vehicle, sensor values at that moment
-- interpolates sensor readings to the frame's exact timestamp from the imported dataset? *(would need user choice on interpolation scheme)*
-- returns a structured record — knows nothing about image files
+- reads the `sensor_snapshot` JSON blob from `frame_plan` for a given frame — no re-querying of sensor data required
+- combines snapshot values with project metadata from the YAML spec
+- returns a populated `FrameMetadata` record — knows nothing about image files
 
 ### geo interpolator
 - takes position log and a UTC timestamp, returns lat/lon/heading at that moment
@@ -123,10 +166,13 @@ src/soi_frame_extractor/
 
 ### metadata writer
 - embeds a frame's metadata record into the image file
-- three layers:
-  - EXIF GPS tags *(lat, lon, depth, timestamp - JSON string could go into user comment, but XMP might be better)*
+- four layers:
+  - EXIF GPS tags *(lat, lon, depth, timestamp)*
   - IPTC fields *(title, keywords, standardized caption w/ credit)*
-  - XMP fields *(data fields, needs definition)*
+  - XMP fields *(canonical sensor fields under soi: namespace; unmapped columns under their original name; project metadata key/value pairs)*
+  - iFDO fields *(scientific image metadata standard)*
+- canonical fields (latitude, longitude, depth) are routed to their prescribed layer and tag via the internal field registry
+- all other sensor columns and project metadata flow to XMP automatically
 
 ### frame writer
 - writes a frame image to storage (local or cloud)
