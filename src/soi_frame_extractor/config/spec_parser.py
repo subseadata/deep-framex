@@ -9,19 +9,41 @@ Expected YAML shape:
         periods:
           - start: "2024-01-15T10:00:00Z"
             end:   "2024-01-15T10:30:00Z"
+        constraints:
+          - column: depth
+            min: 1000
+            max: 1200
       - interval_s: 1.0
         # no periods key → rule applies to full session
+
+    mappings:                  # omit entirely if no CSV was imported
+      timestamp: utc_time      # required if mappings is present
+      latitude:  lat           # optional
+      longitude: lon           # optional
+      depth:     z             # optional
+      temp:      temperature_c # any extra columns are accepted
+
+    metadata:                  # optional; all values stored as strings
+      cruise_id: FK250101
+      dive_id:   S0042
+      vehicle:   SuBastian
 
 All datetimes must be ISO 8601 with explicit UTC offset (Z or +00:00).
 """
 
 from pathlib import Path
 
-from ..models.models import ExtractionSpec, ExtractionRule, TimePeriod
+from ..models.models import (
+    ColumnMappings,
+    ExtractionRule,
+    ExtractionSpec,
+    TimePeriod,
+)
 
 # TODO evaluate how common other formats are and if they are compatible
 # TODO unify this argument list in one location - duplicated in spec_parser
 VIDEO_EXTENSIONS = {".mp4", ".mov"} # , ".avi", ".mkv", ".mts", ".m4v"}
+
 
 def spec_from_file(path: Path) -> ExtractionSpec:
     """Parse a YAML config file into an ExtractionSpec.
@@ -56,6 +78,9 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
         ValueError: if 'rules' key is missing or empty, if any rule is
                     missing 'interval_s', or if any datetime string is not
                     a valid ISO 8601 UTC timestamp.
+        ValueError: if any constraint is missing 'column' or has a
+                    non-numeric min/max value.
+        ValueError: if 'mappings' is present but 'timestamp' is missing.
     """
     # raise ValueError if 'rules' key is absent or the list is empty
 
@@ -71,7 +96,22 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
     #     raise ValueError if start >= end
     #     append TimePeriod(start=start, end=end)
     #
-    #   append ExtractionRule(interval_s=interval_s, periods=periods)
+    #   constraints = []
+    #   for each raw constraint dict in raw_rule.get('constraints', []):
+    #     raise ValueError if 'column' is missing
+    #     cast min and max to float if present; raise ValueError if not numeric
+    #     append ExtractionRule.SensorConstraint(column=column, min=min, max=max)
+    #
+    #   append ExtractionRule(interval_s=interval_s, periods=periods, constraints=constraints)
 
-    # return ExtractionSpec(rules=rules)
+    # mappings (optional)
+    # if 'mappings' key is present:
+    #   raise ValueError if 'timestamp' is missing from mappings
+    #   build ColumnMappings(**raw['mappings']) — extra fields accepted as-is
+    # else mappings = None
+
+    # project_metadata (optional)
+    # pass raw.get('metadata', {}) through as dict[str, str]
+
+    # return ExtractionSpec(rules=rules, mappings=mappings, project_metadata=project_metadata)
     pass
