@@ -5,9 +5,10 @@ All core data structures used across the library are defined here.
 
 from datetime import datetime, timedelta
 from pathlib import Path
+
 import av
 from numpy.typing import NDArray
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 # TODO: add @field_validator for arbitrary types once dependencies are installed:
 #   - Video.container (av.container.InputContainer) — check open, has video stream
@@ -28,7 +29,7 @@ class CustomBaseModel(BaseModel):
 class VideoFile(CustomBaseModel):
     path: Path
     utc_start: datetime
-    duration: timedelta 
+    duration: timedelta
 
 
 class Video(CustomBaseModel):
@@ -41,6 +42,45 @@ class VideoSession(CustomBaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Sensor data models
+# ---------------------------------------------------------------------------
+
+class ColumnMappings(CustomBaseModel):
+    """Maps user CSV column names to canonical metadata field names.
+
+    timestamp is required — the user must always name which CSV column holds
+    the time reference.  latitude, longitude, and depth are optional — if
+    none are provided, extracted frames will carry no location metadata.
+    Any additional mappings the user supplies (e.g. temp, salinity) are
+    accepted as extra fields and written to XMP under their key name.
+
+    Keys are the canonical names used in metadata output.
+    Values are the exact column names as they appear in the user's CSV.
+    """
+    model_config = ConfigDict(extra='allow')
+
+    timestamp: str                          # required — name of the timestamp column in the CSV
+    latitude: str | None = None
+    longitude: str | None = None
+    depth: str | None = None
+
+
+class ImportedDataset(CustomBaseModel):
+    """Describes the sensor data written into the session database.
+
+    Returned by the data importer after loading a CSV into sensor_readings.
+    Carries enough information for the planner to validate constraints and
+    for the metadata writer to know which canonical fields are resolvable.
+    The actual data lives in the session database, not in this model.
+    """
+    columns: list[str]          # sensor column names, excluding timestamp
+    timestamp_column: str       # name of the timestamp column in the CSV
+    row_count: int
+    utc_start: datetime
+    utc_end: datetime
+
+
+# ---------------------------------------------------------------------------
 # Extraction planning models
 # ---------------------------------------------------------------------------
 
@@ -50,12 +90,29 @@ class TimePeriod(CustomBaseModel):
 
 
 class ExtractionRule(CustomBaseModel):
+
+    class SensorConstraint(CustomBaseModel):
+        """A min/max bound applied to a single sensor column during planning.
+
+        Restricts this rule's frames to readings within an environmental
+        range (e.g., depth between 1000 and 1200 m).  Either bound may be
+        omitted to produce a one-sided constraint.
+
+        column must match a column name present in the imported CSV.
+        """
+        column: str
+        min: float | None = None
+        max: float | None = None
+
     interval_s: float
-    periods: list[TimePeriod] = []      # if empty, rule applies to full session
+    periods: list[TimePeriod] = Field(default_factory=list)         # if empty, rule applies to full session
+    constraints: list[SensorConstraint] = Field(default_factory=list)
 
 
 class ExtractionSpec(CustomBaseModel):
     rules: list[ExtractionRule]
+    mappings: ColumnMappings | None = None          # omit if no CSV was imported
+    project_metadata: dict[str, str] = {}
 
 
 class VideoExtractionPlan(CustomBaseModel):
@@ -68,7 +125,19 @@ class VideoExtractionPlan(CustomBaseModel):
 # ---------------------------------------------------------------------------
 
 class FrameMetadata(CustomBaseModel):
-    pass  # fields TBD
+    """All metadata associated with a single extracted frame.
+
+    sensor_snapshot holds interpolated sensor values at the frame's exact
+    timestamp, keyed by the original CSV column name.  project_metadata
+    carries the operator-supplied fields from the YAML spec.  Both travel
+    with the frame through the pipeline and are written into the image file
+    by the metadata writer.
+    """
+    utc_timestamp: datetime
+    video_path: Path
+    offset_s: float
+    sensor_snapshot: dict[str, float] = {}
+    project_metadata: dict[str, str] = {}
 
 
 class ExtractedFrame(CustomBaseModel):
