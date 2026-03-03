@@ -1,36 +1,115 @@
 # Example extraction spec for soi-frame-extractor
 #
-# ExtractionSpec model in models.py contains specifics
+# Every rule must have interval_s.
+# Optional rule arguments: periods, constraints
 #
-# Every ruleset must have
-#   interval_s
-#
-# Optional ruleset arguments
-#   periods
-#
+# Rule composition:
+#   Same rule  — periods and constraints are INTERSECTED
+#                (frames only where all conditions are simultaneously met)
+#   Diff rules — UNIONED
+#                (each rule contributes independently; duplicates removed)
 #
 # Usage:
-# TODO cli example of usage
+#   soi-extract <source> --spec extraction_spec.yaml [--data sensors.csv] [--output ./frames]
 
 
-# Time-constrained extraction examples:
-# each can be used individually or you can mix rule conditions,
-# the parser will translate complex rules to the extraction spec
+# ---------------------------------------------------------------------------
+# RULES (required)
+# ---------------------------------------------------------------------------
+
 rules:
 
-  # extract 1 frame every 10s for the entire video
+  # 1 frame every 10s for the entire session
   - interval_s: 10.0
 
-  # extract 1 frame every 2 seconds during a specific UTC window (ISO8601 timestamps required, UTC recommended)
+  # 1 frame every 2s during a specific UTC window
   - interval_s: 2.0
     periods:
       - start: "2025-11-15T10:25:00Z"
         end:   "2025-11-15T10:30:00Z"
 
-  # extract 1 frame every 30 seconds during another time window that overlaps with the 10s example
+  # 1 frame every 30s during an overlapping UTC window
   - interval_s: 30.0
     periods:
       - start: "2025-11-15T10:20:00Z"
         end:   "2025-11-15T10:50:00Z"
 
-# TODO data-informed extraction rules
+  # 1 frame every 5s while depth is between 1000–1200 m
+  - interval_s: 5.0
+    constraints:
+      - column: depth
+        min: 1000
+        max: 1200
+
+  # 1 frame every 2s — UTC window AND depth < 500 m AND temperature 2–4 C (intersected)
+  - interval_s: 2.0
+    periods:
+      - start: "2025-11-15T10:25:00Z"
+        end:   "2025-11-15T10:30:00Z"
+    constraints:
+      - column: depth
+        max: 500
+      - column: temperature
+        min: 2.0
+        max: 4.0
+
+
+# ---------------------------------------------------------------------------
+# MAPPINGS (required only if a sensor CSV is provided)
+# ---------------------------------------------------------------------------
+# Maps canonical field names to your CSV column names.
+# Fill in the value for each field that exists in your CSV.
+# Remove lines for fields you do not have.
+#
+# mappings:
+#
+#   # required if mappings block is present
+#   timestamp:   your_column
+#
+#   # location — written to EXIF GPS tags and iFDO image-latitude/longitude/depth
+#   latitude:    your_column
+#   longitude:   your_column
+#   depth:       your_column
+#   altitude_m:  your_column
+#
+#   # orientation — written to EXIF GPSImgDirection and iFDO image-heading/pitch/roll
+#   heading_deg: your_column
+#   pitch_deg:   your_column
+#   roll_deg:    your_column
+#
+#   # any other columns from your CSV — written to XMP soi: namespace
+#   temperature: your_column
+#   salinity:    your_column
+
+
+# ---------------------------------------------------------------------------
+# METADATA (optional)
+# ---------------------------------------------------------------------------
+# Arbitrary key/value pairs embedded in every output frame.
+# All values are treated as strings.
+# Fill in what is relevant to your deployment and remove the rest.
+#
+# metadata:
+#
+#   # iFDO fields — written to iFDO image-* fields
+#   cruise_id:    FK250101
+#   dive_id:      S0042
+#   vehicle:      SuBastian
+#   pi_name:      "Lastname, F."
+#   pi_orcid:     "0000-0000-0000-0000"
+#   project:      "Deep-sea coral survey"
+#   license:      "CC BY 4.0"
+#
+#   # IPTC fields — written to IPTC layer
+#   credit:       "Schmidt Ocean Institute"
+#   source:       "ROV SuBastian"
+#   copyright:    "© 2025 Schmidt Ocean Institute"
+#   caption:      "Description of image content"
+#
+#   # EXIF fields — written to EXIF layer
+#   camera_make:  "Imenco"
+#   camera_model: "Birdseye 4K"
+#
+#   # anything else — written to XMP soi: namespace
+#   institution:  MBARI
+#   expedition:   "FK250101 Coral Survey"
