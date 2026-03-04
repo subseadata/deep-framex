@@ -11,11 +11,12 @@ pip install soi-frame-extractor
 Run from the command line:
 
 ```
-soi-extract <source> --spec <yaml> [--output <dir>]
+soi-extract <source> --spec <yaml> [--data <csv>] [--output <dir>]
 ```
 
-- `source`  path to a directory of video files, or one or more explicit video file paths
-- `--spec`  path to a YAML extraction spec (required)
+- `source`    path to a directory of video files, or one or more explicit video file paths
+- `--spec`    path to a YAML extraction spec (required)
+- `--data`    path to a sensor CSV file (optional — enables depth/location constraints and metadata)
 - `--output`  directory to write extracted frames (default: `./frames`)
 
 ### Extraction spec
@@ -53,7 +54,7 @@ rules:
 mappings:                    # omit entirely if no sensor CSV is provided
   timestamp: utc_time        # required if mappings is present
   latitude:  lat             # optional — enables GPS metadata in output frames
-  longitude: lon             # optional
+  longitude: lon             # optional — accepts -180/+180 or 0-360
   depth:     z               # optional
   temp:      temperature_c   # any additional columns are accepted
 
@@ -61,6 +62,13 @@ metadata:                    # optional — arbitrary key/value pairs
   cruise_id: FK250101        # written to XMP and iFDO in all output frames
   dive_id:   S0042
   vehicle:   SuBastian
+
+filename_template: "{dive_id}_{depth}m_T{utc}.jpg"  # optional
+# available variables: {utc}, {video_stem}, {offset_s}, any mappings key, any metadata key
+# omit to use the default: {utc}_{video_stem}.jpg
+
+xmp_namespace_uri:    https://soi-frame-extractor.org/xmp/v1/  # optional
+xmp_namespace_prefix: sfe                                       # optional
 ```
 
 All timestamps must be ISO 8601 with an explicit UTC offset (`Z` or `+00:00`).
@@ -73,16 +81,14 @@ All timestamps must be ISO 8601 with an explicit UTC offset (`Z` or `+00:00`).
 src/soi_frame_extractor/
 ├── models/          # pydantic data models and metadata field registry
 ├── config/          # YAML spec parsing and video file discovery
-├── data/            # CSV import, clean process, plot data for selection
+├── data/            # CSV import
 ├── db/              # session SQLite (in-memory) — sensor readings and frame plan
 ├── planning/        # translate intervals, periods, sensor constraints into extraction offsets
-├── extraction/      # read frames from video or pre-computed cache
-├── cache/           # handles cache sampling and indexing functions
-├── metadata/        # attach metadata and geospatial data to frames
-├── output/          # write frames to disk or cloud storage
-├── analysis/        # score frames for analysis or quality
-├── viz/             # frame overlay, map view
-└── utils/           # shared helpers (time conversion, image format)
+├── extraction/      # open video containers and decode frames
+├── metadata/        # embed metadata into image files (EXIF, IPTC, XMP, iFDO)
+├── output/          # write frames to disk
+├── utils/           # shared helpers (coordinate conversion, etc.)
+├── cache/           # (planned) cache sampling and indexing
 ```
 
 ## User Story Functionality (I want to...)
@@ -130,7 +136,8 @@ src/soi_frame_extractor/
 - accepts video source as either a directory or an explicit list of file paths
 - accepts an optional sensor CSV; if provided, loads it into the session database via the data importer
 - validates all datetimes as ISO 8601 UTC; rejects naive timestamps
-- resolves video paths and probes each file for metadata (utc_start, duration)
+- resolves video paths and probes each file for metadata (utc_start from embedded `creation_time` tag, duration)
+- validates the filename template against available keys at startup — fails fast before any extraction begins
 - produces an ExtractionSpec and VideoSession ready for the planner
 
 ### extraction planner
@@ -143,8 +150,9 @@ src/soi_frame_extractor/
 
 ### extractor
 - reads frames at the timestamps the planner provides
-- single responsibility: get the frame at time T
-- async frame extraction *(i.e., don't load all frames into memory at once for a long dive)*
+- opens each video container once, seeks offsets in ascending order, then closes it before moving to the next video
+- reads the `sensor_snapshot` and `project_metadata` for each frame from `frame_plan` and assembles a complete `ExtractedFrame`
+- single responsibility: get the pixel data at offset T and attach its pre-computed metadata
 
 ### cache sampler
 - used when the extraction planner finds a cache hit
@@ -155,30 +163,21 @@ src/soi_frame_extractor/
 - reads a cache manifest from storage
 - returns which requested timestamps are available and which need extraction
 
-### metadata collector
-- reads the `sensor_snapshot` JSON blob from `frame_plan` for a given frame — no re-querying of sensor data required
-- combines snapshot values with project metadata from the YAML spec
-- returns a populated `FrameMetadata` record — knows nothing about image files
-
-### geo interpolator
-- takes position log and a UTC timestamp, returns lat/lon/heading at that moment
-- pure interpolation — writing GPS tags into the image is the metadata writer's job
-
 ### metadata writer
 - embeds a frame's metadata record into the image file
 - four layers:
   - EXIF GPS tags *(lat, lon, depth, timestamp)*
   - IPTC fields *(title, keywords, standardized caption w/ credit)*
-  - XMP fields *(canonical sensor fields under soi: namespace; unmapped columns under their original name; project metadata key/value pairs)*
+  - XMP fields *(canonical sensor fields and project metadata under a user-configurable namespace; defaults to `sfe:` / `https://soi-frame-extractor.org/xmp/v1/`)*
   - iFDO fields *(scientific image metadata standard)*
 - canonical fields (latitude, longitude, depth) are routed to their prescribed layer and tag via the internal field registry
 - all other sensor columns and project metadata flow to XMP automatically
 
 ### frame writer
 - writes a frame image to storage (local or cloud)
-- sets output format *(JPEG, PNG, TIFF)* and quality/compression
-- filename generated from a template string *(e.g., `{dive_id}_{depth_m}m_T{utc}.jpg`)*
-- returns the storage location of the written file if cloud hosted
+- sets output format *(JPEG or TIFF)*
+- filename generated from a user-supplied template string using canonical sensor and metadata keys *(e.g., `{dive_id}_{depth}m_T{utc}.jpg`)*; falls back to `{utc}_{video_stem}.jpg` per-frame if a sensor value is absent
+- returns `(path, ExtractedFrame)` pairs so the metadata writer can annotate each file immediately after
 
 ### cache writer
 - records a completed extraction in a cache manifest
