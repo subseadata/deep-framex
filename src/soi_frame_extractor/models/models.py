@@ -113,6 +113,9 @@ class ExtractionSpec(CustomBaseModel):
     rules: list[ExtractionRule]
     mappings: ColumnMappings | None = None          # omit if no CSV was imported
     project_metadata: dict[str, str] = {}
+    xmp_namespace_uri: str = "https://soi-frame-extractor.org/xmp/v1/"
+    xmp_namespace_prefix: str = "sfe"
+    filename_template: str | None = None            # omit to use default naming
 
 
 class VideoExtractionPlan(CustomBaseModel):

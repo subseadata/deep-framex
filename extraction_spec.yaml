@@ -117,6 +117,40 @@ rules:
 #   camera_make:  "Imenco"
 #   camera_model: "Birdseye 4K"
 #
-#   # anything else — written to XMP soi: namespace
+#   # anything else — written to XMP custom namespace (see xmp_namespace_* below)
 #   institution:  MBARI
 #   expedition:   "FK250101 Coral Survey"
+
+
+# ---------------------------------------------------------------------------
+# FILENAME TEMPLATE (optional)
+# ---------------------------------------------------------------------------
+# Python format string for output image filenames.
+# Omit to use the default: {utc}_{video_stem}.jpg
+#
+# Available variables:
+#   {utc}         — UTC timestamp of the frame (20251115T102530123456)
+#   {video_stem}  — source video filename without extension
+#   {offset_s}    — seconds from t=0 in the source video
+#   {<key>}       — any canonical sensor key (left-hand side of mappings block)
+#                   e.g. {depth}, {latitude}, {longitude}, {temperature}
+#   {<key>}       — any key from the metadata block, e.g. {dive_id}, {cruise_id}
+#
+# Use only the variables you want — omit the rest.
+# If the template cannot be rendered (missing key, bad syntax), the writer
+# warns to stderr and falls back to the default.
+#
+# filename_template: "{dive_id}_{depth}m_T{utc}.jpg"
+# filename_template: "{latitude}_{longitude}_{utc}.tif"
+# filename_template: "{cruise_id}_{video_stem}_{utc}.jpg"
+
+
+# ---------------------------------------------------------------------------
+# XMP NAMESPACE (optional)
+# ---------------------------------------------------------------------------
+# Sensor columns and project_metadata keys not routed to EXIF/IPTC/iFDO are
+# written to XMP under a custom namespace.  Set URI and prefix here, or omit
+# to use the defaults shown.
+#
+# xmp_namespace_uri:    https://soi-frame-extractor.org/xmp/v1/
+# xmp_namespace_prefix: sfe
