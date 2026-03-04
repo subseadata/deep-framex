@@ -118,8 +118,9 @@ def validate_filename_template(
 
     Args:
         template:      filename_template string from ExtractionSpec.
-        sensor_keys:   canonical sensor column names from ImportedDataset.columns
-                       (empty list if no CSV was imported).
+        sensor_keys:   canonical sensor key names — the non-timestamp keys of
+                       ColumnMappings (e.g. ["latitude", "depth", "temperature"]).
+                       Pass an empty list if no CSV was imported.
         metadata_keys: keys from ExtractionSpec.project_metadata.
 
     Raises:

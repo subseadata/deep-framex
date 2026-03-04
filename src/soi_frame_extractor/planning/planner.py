@@ -17,7 +17,10 @@ Rule composition:
 
 import sqlite3
 
+from datetime import datetime
+
 from ..models.models import (
+    ExtractionRule,
     ExtractionSpec,
     TimePeriod,
     VideoExtractionPlan,
@@ -60,7 +63,7 @@ def plan(
 
 
 def _rule_windows(
-    rule,
+    rule: ExtractionRule,
     session: VideoSession,
     conn: sqlite3.Connection,
 ) -> list[TimePeriod]:
@@ -85,7 +88,7 @@ def _rule_windows(
 
 
 def _constraint_windows(
-    constraint,
+    constraint: ExtractionRule.SensorConstraint,
     conn: sqlite3.Connection,
 ) -> list[TimePeriod]:
     """Query sensor_readings for contiguous time ranges where a constraint is met.
@@ -131,7 +134,7 @@ def _intersect_windows(
 def _sample_timestamps(
     windows: list[TimePeriod],
     interval_s: float,
-) -> list:
+) -> list[datetime]:
     """Sample UTC timestamps at interval_s across a list of time windows.
 
     Walks each window from its start, emitting a timestamp every interval_s
@@ -149,7 +152,7 @@ def _sample_timestamps(
 
 
 def _assign_to_video(
-    utc,
+    utc: datetime,
     session: VideoSession,
 ) -> tuple[VideoFile, float]:
     """Find which video contains a UTC timestamp and return its offset.

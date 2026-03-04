@@ -131,10 +131,12 @@ class FrameMetadata(CustomBaseModel):
     """All metadata associated with a single extracted frame.
 
     sensor_snapshot holds interpolated sensor values at the frame's exact
-    timestamp, keyed by the original CSV column name.  project_metadata
-    carries the operator-supplied fields from the YAML spec.  Both travel
-    with the frame through the pipeline and are written into the image file
-    by the metadata writer.
+    timestamp, keyed by canonical name (the left-hand side of the mappings
+    block in the YAML spec — e.g. "depth", "latitude", not the original CSV
+    column names).  The planner performs this remapping when building the
+    snapshot.  project_metadata carries the operator-supplied fields from the
+    YAML spec.  Both travel with the frame through the pipeline and are
+    written into the image file by the metadata writer.
     """
     utc_timestamp: datetime
     video_path: Path

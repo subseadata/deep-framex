@@ -10,9 +10,8 @@ from pathlib import Path
 from ..models.models import VideoFile
 from ..extraction.video_reader import probe_video
 
-# TODO evaluate how common other formats are and if they are compatible
-# TODO unify this argument list in one location - duplicated in spec_parser
-VIDEO_EXTENSIONS = {".mp4", ".mov"} # , ".avi", ".mkv", ".mts", ".m4v"}
+# TODO: evaluate whether other formats (.avi, .mkv, .mts, .m4v) are needed
+VIDEO_EXTENSIONS = {".mp4", ".mov"}
 
 def discover_videos(source: Path | list[Path]) -> list[VideoFile]:
     """Resolve a source to a list of probed VideoFiles.

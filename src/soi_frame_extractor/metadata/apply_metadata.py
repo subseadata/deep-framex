@@ -83,10 +83,10 @@ def _write_exif(path: Path, meta: FrameMetadata) -> None:
         DateTimeOriginal        — from utc_timestamp
         GPSDateStamp            — date portion of utc_timestamp
         GPSTimeStamp            — time portion of utc_timestamp
-        GPSLatitude             — abs(latitude) as DMS rational via _decimal_to_dms
-        GPSLatitudeRef          — "N" or "S" via _decimal_to_ref
-        GPSLongitude            — abs(longitude) as DMS rational via _decimal_to_dms
-        GPSLongitudeRef         — "E" or "W" via _decimal_to_ref
+        GPSLatitude             — abs(latitude) as DMS rational via decimal_to_dms
+        GPSLatitudeRef          — "N" or "S" via decimal_to_ref
+        GPSLongitude            — abs(longitude) as DMS rational via decimal_to_dms
+        GPSLongitudeRef         — "E" or "W" via decimal_to_ref
         GPSAltitude             — depth value as rational (positive magnitude)
         GPSAltitudeRef          — 1 (below sea level)
         Make                    — from project_metadata camera_make

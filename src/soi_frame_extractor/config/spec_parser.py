@@ -28,6 +28,10 @@ Expected YAML shape:
       dive_id:   S0042
       vehicle:   SuBastian
 
+    filename_template: "{dive_id}_{depth}m_T{utc}.jpg"  # optional
+    xmp_namespace_uri:    https://example.org/myproject/ # optional
+    xmp_namespace_prefix: myproj                         # optional
+
 All datetimes must be ISO 8601 with explicit UTC offset (Z or +00:00).
 """
 
@@ -39,10 +43,6 @@ from ..models.models import (
     ExtractionSpec,
     TimePeriod,
 )
-
-# TODO evaluate how common other formats are and if they are compatible
-# TODO unify this argument list in one location - duplicated in spec_parser
-VIDEO_EXTENSIONS = {".mp4", ".mov"} # , ".avi", ".mkv", ".mts", ".m4v"}
 
 
 def spec_from_file(path: Path) -> ExtractionSpec:
@@ -113,5 +113,17 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
     # project_metadata (optional)
     # pass raw.get('metadata', {}) through as dict[str, str]
 
-    # return ExtractionSpec(rules=rules, mappings=mappings, project_metadata=project_metadata)
+    # optional top-level fields (all have model defaults if absent)
+    # filename_template    = raw.get('filename_template')           → str | None
+    # xmp_namespace_uri    = raw.get('xmp_namespace_uri')           → str | None (use model default if absent)
+    # xmp_namespace_prefix = raw.get('xmp_namespace_prefix')        → str | None (use model default if absent)
+
+    # return ExtractionSpec(
+    #     rules=rules,
+    #     mappings=mappings,
+    #     project_metadata=project_metadata,
+    #     filename_template=filename_template,
+    #     **({'xmp_namespace_uri': xmp_namespace_uri} if xmp_namespace_uri else {}),
+    #     **({'xmp_namespace_prefix': xmp_namespace_prefix} if xmp_namespace_prefix else {}),
+    # )
     pass
