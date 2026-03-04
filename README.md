@@ -81,7 +81,7 @@ All timestamps must be ISO 8601 with an explicit UTC offset (`Z` or `+00:00`).
 src/soi_frame_extractor/
 ├── models/          # pydantic data models and metadata field registry
 ├── config/          # YAML spec parsing and video file discovery
-├── data/            # CSV import
+├── data/            # CSV import; (planned) sensor data visualisation and range selection
 ├── db/              # session SQLite (in-memory) — sensor readings and frame plan
 ├── planning/        # translate intervals, periods, sensor constraints into extraction offsets
 ├── extraction/      # open video containers and decode frames
@@ -89,6 +89,7 @@ src/soi_frame_extractor/
 ├── output/          # write frames to disk
 ├── utils/           # shared helpers (coordinate conversion, etc.)
 ├── cache/           # (planned) cache sampling and indexing
+└── viz/             # (planned) map view of extracted frame positions
 ```
 
 ## User Story Functionality (I want to...)
@@ -124,12 +125,6 @@ src/soi_frame_extractor/
 - `sensor_readings` — all CSV rows indexed by timestamp (Unix epoch float); schema built dynamically from CSV headers at import time
 - `frame_plan` — one row per frame to extract; carries status (`planned → extracted → written`) and a `sensor_snapshot` JSON blob of interpolated sensor values at that timestamp
 - downstream stages (metadata writer, frame writer) read from `frame_plan` only — they never re-query `sensor_readings`
-
-### timestamp correlator
-- aligns separate time references into one: sensor/data UTC, video UTC, video time *(t=0 at start->end)*
-- everything downstream depends on this being right [how do we handle bad sync events? manual override?]
-- alignment point:
-    - assume video is authoritative? 
 
 ### user ingress
 - accepts a YAML config file defining rules, optional sensor mappings, and optional project metadata
@@ -174,7 +169,7 @@ src/soi_frame_extractor/
 - all other sensor columns and project metadata flow to XMP automatically
 
 ### frame writer
-- writes a frame image to storage (local or cloud)
+- writes frame images to a local output directory
 - sets output format *(JPEG or TIFF)*
 - filename generated from a user-supplied template string using canonical sensor and metadata keys *(e.g., `{dive_id}_{depth}m_T{utc}.jpg`)*; falls back to `{utc}_{video_stem}.jpg` per-frame if a sensor value is absent
 - returns `(path, ExtractedFrame)` pairs so the metadata writer can annotate each file immediately after
@@ -184,20 +179,9 @@ src/soi_frame_extractor/
 - stores what rate was extracted, how many frames, time range, storage prefix
 - enables the frame cache index to answer future requests without scanning storage
 
-### frame scorer
-- analyzes frames and produces quality/analysis scores *(e.g., sharpness, blue water, pure black, others...?)*
-- attaches scores to the frame record
-- never discards frames — flags them and lets the user decide what to do
-
-### data evaluator
+### data evaluator *(planned)*
 - plots sensor data *(time-series of depth, temperature, etc.)* so you can see what happened during a dive
-- interactive — select time ranges and value bounds graphically *(nice-to-have feature depending on the interface)*
 - outputs selections as time windows and environmental conditions ready to feed into the extraction planner
 
-### frame annotator
-- burns data overlay onto a frame image *(depth, temp, timestamp, dive ID)*
-- returns a new frame — does not modify the original
-
-### map viewer
+### map viewer *(planned)*
 - plots frame positions on an interactive map using embedded geospatial metadata
-- useful for reviewing spatial coverage before or after extraction
