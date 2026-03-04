@@ -15,7 +15,6 @@ Coordinate conventions:
     EXIF:    absolute DMS rational triples + Ref tags (N/S, E/W) — no negatives.
     XMP:     signed decimal degrees (−180/+180), negative = S or W.
     iFDO:    signed decimal degrees (−180/+180), negative = S or W.
-    IPTC:    no GPS fields in IIM; coordinates are not written to IPTC.
 
     Longitude normalisation (0–360 → −180/+180) is applied internally before
     any layer-specific conversion.
