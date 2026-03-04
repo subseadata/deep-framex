@@ -2,6 +2,13 @@
 #
 # Every rule must have interval_s.
 # Optional rule arguments: periods, constraints
+#   period:
+#     - start: start time (UTC)
+#       end:   end time (UTC)
+#   constriaints:
+#     - column: name of the data column
+#       max:    maximum value (frames taken only less than this value)
+#       min:    minimum value (frames taken only greater than this value)
 #
 # Rule composition:
 #   Same rule  — periods and constraints are INTERSECTED
@@ -66,13 +73,13 @@ rules:
 #   # required if mappings block is present
 #   timestamp:   your_column
 #
-#   # location — written to EXIF GPS tags and iFDO image-latitude/longitude/depth
+#   # location — EXIF GPSLatitude/Ref, GPSLongitude/Ref, GPSAltitude/Ref + iFDO image-latitude/longitude/depth
 #   latitude:    your_column
 #   longitude:   your_column
 #   depth:       your_column
-#   altitude_m:  your_column
+#   altitude_m:  your_column    # iFDO image-altitude-meters
 #
-#   # orientation — written to EXIF GPSImgDirection and iFDO image-heading/pitch/roll
+#   # orientation — EXIF GPSImageDirection + iFDO image-heading/pitch/roll
 #   heading_deg: your_column
 #   pitch_deg:   your_column
 #   roll_deg:    your_column
@@ -92,11 +99,11 @@ rules:
 # metadata:
 #
 #   # iFDO fields — written to iFDO image-* fields
-#   cruise_id:    FK250101
-#   dive_id:      S0042
-#   vehicle:      SuBastian
-#   pi_name:      "Lastname, F."
-#   pi_orcid:     "0000-0000-0000-0000"
+#   cruise_id:    FK250101          # → image-sequence-name
+#   dive_id:      S0042             # → image-deployment-id
+#   vehicle:      SuBastian         # → image-platform.name  (nested object)
+#   pi_name:      "Lastname, F."    # → image-pi.name        (nested object)
+#   pi_orcid:     "0000-0000-0000-0000"  # → image-pi.orcid  (nested object)
 #   project:      "Deep-sea coral survey"
 #   license:      "CC BY 4.0"
 #
