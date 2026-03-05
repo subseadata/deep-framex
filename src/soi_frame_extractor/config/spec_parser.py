@@ -35,7 +35,10 @@ Expected YAML shape:
 All datetimes must be ISO 8601 with explicit UTC offset (Z or +00:00).
 """
 
+from datetime import datetime
 from pathlib import Path
+
+import yaml
 
 from ..models.models import (
     ColumnMappings,
@@ -59,10 +62,11 @@ def spec_from_file(path: Path) -> ExtractionSpec:
         yaml.YAMLError: if the file is not valid YAML.
         ValueError: if the structure or field values are invalid.
     """
-    # raise FileNotFoundError if path does not exist
-    # open and yaml.safe_load the file
-    # delegate to spec_from_dict
-    pass
+    if not path.exists():
+        raise FileNotFoundError(f"Spec file not found: {path}")
+    with open(path) as f:
+        raw = yaml.safe_load(f)
+    return spec_from_dict(raw)
 
 
 def spec_from_dict(raw: dict) -> ExtractionSpec:
@@ -88,48 +92,91 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
         xmp_namespace_prefix: str | None  (model default if absent)
         stream_output:        bool        (default False)
     """
-    # raise ValueError if 'rules' key is absent or the list is empty
+    if not raw.get('rules'):
+        raise ValueError("'rules' key is missing or empty")
 
-    # for each raw rule dict in raw['rules']:
-    #   raise ValueError if 'interval_s' is missing
-    #   cast interval_s to float; raise ValueError if not a positive number
-    #
-    #   periods = []
-    #   for each raw period dict in raw_rule.get('periods', []):
-    #     parse 'start' and 'end' strings with datetime.fromisoformat
-    #     raise ValueError if either string is missing or unparseable
-    #     raise ValueError if the parsed datetime has no tzinfo (naive)
-    #     raise ValueError if start >= end
-    #     append TimePeriod(start=start, end=end)
-    #
-    #   constraints = []
-    #   for each raw constraint dict in raw_rule.get('constraints', []):
-    #     raise ValueError if 'column' is missing
-    #     cast min and max to float if present; raise ValueError if not numeric
-    #     append ExtractionRule.SensorConstraint(column=column, min=min, max=max)
-    #
-    #   append ExtractionRule(interval_s=interval_s, periods=periods, constraints=constraints)
+    rules = []
+    for i, raw_rule in enumerate(raw['rules']):
+        if 'interval_s' not in raw_rule:
+            raise ValueError(f"Rule {i}: missing 'interval_s'")
+        try:
+            interval_s = float(raw_rule['interval_s'])
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"Rule {i}: 'interval_s' must be a positive number, got {raw_rule['interval_s']!r}"
+            )
+        if interval_s <= 0:
+            raise ValueError(f"Rule {i}: 'interval_s' must be positive, got {interval_s}")
+
+        periods = []
+        for j, raw_period in enumerate(raw_rule.get('periods', [])):
+            for key in ('start', 'end'):
+                if key not in raw_period:
+                    raise ValueError(f"Rule {i}, period {j}: missing '{key}'")
+            try:
+                start = datetime.fromisoformat(str(raw_period['start']))
+                end = datetime.fromisoformat(str(raw_period['end']))
+            except ValueError as e:
+                raise ValueError(f"Rule {i}, period {j}: invalid datetime: {e}") from e
+            if start.tzinfo is None or end.tzinfo is None:
+                raise ValueError(
+                    f"Rule {i}, period {j}: datetimes must be UTC-aware (use Z or +00:00)"
+                )
+            if start >= end:
+                raise ValueError(f"Rule {i}, period {j}: start must be before end")
+            periods.append(TimePeriod(start=start, end=end))
+
+        constraints = []
+        for k, raw_con in enumerate(raw_rule.get('constraints', [])):
+            if 'column' not in raw_con:
+                raise ValueError(f"Rule {i}, constraint {k}: missing 'column'")
+            min_val = max_val = None
+            for bound in ('min', 'max'):
+                if raw_con.get(bound) is not None:
+                    try:
+                        val = float(raw_con[bound])
+                    except (TypeError, ValueError):
+                        raise ValueError(
+                            f"Rule {i}, constraint {k}: '{bound}' must be numeric, "
+                            f"got {raw_con[bound]!r}"
+                        )
+                    if bound == 'min':
+                        min_val = val
+                    else:
+                        max_val = val
+            constraints.append(
+                ExtractionRule.SensorConstraint(
+                    column=raw_con['column'], min=min_val, max=max_val
+                )
+            )
+
+        rules.append(
+            ExtractionRule(interval_s=interval_s, periods=periods, constraints=constraints)
+        )
 
     # mappings (optional)
-    # if 'mappings' key is present:
-    #   raise ValueError if 'timestamp' is missing from mappings
-    #   build ColumnMappings(**raw['mappings']) — extra fields accepted as-is
-    # else mappings = None
+    mappings = None
+    if 'mappings' in raw:
+        if 'timestamp' not in raw['mappings']:
+            raise ValueError("'mappings' block is present but 'timestamp' is missing")
+        mappings = ColumnMappings(**raw['mappings'])
 
-    # project_metadata (optional)
-    # pass raw.get('metadata', {}) through as dict[str, str]
+    # project_metadata (optional) — all values coerced to str
+    project_metadata = {str(k): str(v) for k, v in raw.get('metadata', {}).items()}
 
-    # optional top-level fields (all have model defaults if absent)
-    # filename_template    = raw.get('filename_template')           → str | None
-    # xmp_namespace_uri    = raw.get('xmp_namespace_uri')           → str | None (use model default if absent)
-    # xmp_namespace_prefix = raw.get('xmp_namespace_prefix')        → str | None (use model default if absent)
+    # optional top-level fields — only pass XMP overrides if explicitly set,
+    # so the model defaults apply when the user omits them
+    kwargs: dict = {}
+    if xmp_uri := raw.get('xmp_namespace_uri'):
+        kwargs['xmp_namespace_uri'] = xmp_uri
+    if xmp_prefix := raw.get('xmp_namespace_prefix'):
+        kwargs['xmp_namespace_prefix'] = xmp_prefix
 
-    # return ExtractionSpec(
-    #     rules=rules,
-    #     mappings=mappings,
-    #     project_metadata=project_metadata,
-    #     filename_template=filename_template,
-    #     **({'xmp_namespace_uri': xmp_namespace_uri} if xmp_namespace_uri else {}),
-    #     **({'xmp_namespace_prefix': xmp_namespace_prefix} if xmp_namespace_prefix else {}),
-    # )
-    pass
+    return ExtractionSpec(
+        rules=rules,
+        mappings=mappings,
+        project_metadata=project_metadata,
+        filename_template=raw.get('filename_template'),
+        stream_output=bool(raw.get('stream_output', False)),
+        **kwargs,
+    )
