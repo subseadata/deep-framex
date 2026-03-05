@@ -35,13 +35,16 @@ def discover_videos(source: Path | list[Path]) -> list[VideoFile]:
         ValueError: if any file in an explicit list has an unrecognised
                     extension.
     """
-    # if source is a list:
-    #   delegate to _probe_file_list(source)
-    # else if source is a Path:
-    #   if it does not exist: raise FileNotFoundError
-    #   if it is a file: raise ValueError (wrap it in a list if single-file)
-    #   if it is a directory: delegate to _probe_directory(source)
-    pass
+    if isinstance(source, list):
+        return _probe_file_list(source)
+    if not source.exists():
+        raise FileNotFoundError(f"Video source not found: {source}")
+    if source.is_file():
+        raise ValueError(
+            f"{source} is a file, not a directory. "
+            "To use a single video file, wrap it in a list: [path]"
+        )
+    return _probe_directory(source)
 
 
 def _probe_directory(directory: Path) -> list[VideoFile]:
@@ -56,11 +59,13 @@ def _probe_directory(directory: Path) -> list[VideoFile]:
     Raises:
         ValueError: if no video files with recognised extensions are found.
     """
-    # collect all files in directory whose suffix (lowercased) is in VIDEO_EXTENSIONS
-    # raise ValueError if the collected list is empty
-    # probe each path via probe_video and collect results
-    # return the list of VideoFiles
-    pass
+    paths = [p for p in directory.iterdir() if p.suffix.lower() in VIDEO_EXTENSIONS]
+    if not paths:
+        raise ValueError(
+            f"No recognised video files found in {directory}. "
+            f"Supported extensions: {sorted(VIDEO_EXTENSIONS)}"
+        )
+    return [probe_video(p) for p in paths]
 
 
 def _probe_file_list(paths: list[Path]) -> list[VideoFile]:
@@ -76,9 +81,14 @@ def _probe_file_list(paths: list[Path]) -> list[VideoFile]:
         FileNotFoundError: if any path does not exist.
         ValueError: if any path has an unrecognised extension.
     """
-    # for each path:
-    #   raise FileNotFoundError if it does not exist
-    #   raise ValueError if suffix (lowercased) is not in VIDEO_EXTENSIONS
-    #   probe via probe_video
-    # return list of VideoFiles
-    pass
+    result = []
+    for path in paths:
+        if not path.exists():
+            raise FileNotFoundError(f"Video file not found: {path}")
+        if path.suffix.lower() not in VIDEO_EXTENSIONS:
+            raise ValueError(
+                f"Unrecognised video extension {path.suffix!r} for {path}. "
+                f"Supported extensions: {sorted(VIDEO_EXTENSIONS)}"
+            )
+        result.append(probe_video(path))
+    return result
