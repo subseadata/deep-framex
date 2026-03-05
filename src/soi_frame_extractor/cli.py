@@ -49,6 +49,7 @@ def main() -> None:
         source      one or more video paths or a directory
         --spec      path to YAML extraction spec (required)
         --output    directory to write extracted frames (defaults to ./frames)
+        --data      path to sensor CSV file (optional)
 
     """
     # TODO: if probe or plan/dry run modes are added later, migrate to a subparser

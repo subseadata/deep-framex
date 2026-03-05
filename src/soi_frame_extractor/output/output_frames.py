@@ -42,9 +42,10 @@ Template validation:
     sensor value is absent for a specific timestamp (a data gap, not a config
     error).  This per-frame fallback is silent.
 
-The output directory is created if it does not exist.  If two frames produce
-the same filename after rendering, a zero-padded counter suffix is appended
-before the extension to make each name unique.
+The output directory is created if it does not exist.  No collision detection
+is performed — include {utc} in the template (strongly recommended) since the
+planner guarantees unique timestamps.  Templates that omit {utc} may produce
+collisions if sensor values repeat across frames.
 """
 
 import sys

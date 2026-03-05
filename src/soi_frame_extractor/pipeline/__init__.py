@@ -33,7 +33,7 @@ from ..extraction.video_reader import probe_video
 from ..extraction.video_session import create_video_session
 from ..models.models import ExtractionSpec
 from ..metadata.ifdo import write_ifdo_manifest
-from ..output.output_frames import output_frames, write_frame
+from ..output.output_frames import output_frames, validate_filename_template, write_frame
 from ..planning.planner import plan
 
 

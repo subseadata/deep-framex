@@ -165,7 +165,7 @@ class MetadataDestination(CustomBaseModel):
 
     iFDO is not represented here — it is written as a standalone JSON sidecar
     file for the whole image set, not embedded per-image.  iFDO field routing
-    is handled separately in output/ifdo.py.
+    is handled separately in metadata/ifdo.py.
     """
     exif: str | None = None
     iptc: str | None = None

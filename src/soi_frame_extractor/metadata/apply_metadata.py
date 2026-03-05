@@ -9,7 +9,7 @@ layers are embedded in a single file write — no post-hoc re-opening.
     _build_xmp(meta, ns_uri, ns_prefix) → bytes   serialised XMP packet
 
 iFDO is NOT handled here.  iFDO is a standalone JSON sidecar file written
-once per extraction run by output/ifdo.py — it is not embedded in image files.
+once per extraction run by metadata/ifdo.py — it is not embedded in image files.
 
 Routing is governed by FIELD_REGISTRY for known canonical fields (utc_timestamp,
 latitude, longitude, depth, etc.).  Any sensor column or project_metadata key
