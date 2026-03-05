@@ -5,6 +5,11 @@ description = "Library for frame extraction from deep sea video"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "av>=16.1.0",
+    "numpy>=2.0",
+    "pydantic>=2.0",
+    "PyYAML>=6.0",
+    "Pillow>=11.0",
 ]
 
 [build-system]
