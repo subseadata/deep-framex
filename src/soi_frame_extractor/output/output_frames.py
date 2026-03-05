@@ -58,23 +58,65 @@ _DEFAULT_TEMPLATE = "{utc}_{video_stem}.jpg"
 _BUILTIN_KEYS = {"utc", "video_stem", "offset_s"}
 
 
+def write_frame(
+    frame: ExtractedFrame,
+    output_dir: Path,
+    filename_template: str | None,
+    xmp_namespace_uri: str,
+    xmp_namespace_prefix: str,
+) -> tuple[Path, ExtractedFrame]:
+    """Write a single frame to disk with all metadata embedded in one save.
+
+    Renders a filename, builds EXIF, IPTC, and XMP blocks via the metadata
+    builders in apply_metadata, then saves the image once via Pillow with
+    all metadata included.  output_dir must already exist.
+
+    No collision detection is performed.  If two frames render to the same
+    filename the second will overwrite the first.  This is effectively
+    impossible when the template includes {utc} (strongly recommended) since
+    the planner guarantees unique timestamps.  Templates that omit {utc} may
+    produce collisions if sensor values repeat across frames.
+
+    Args:
+        frame:                ExtractedFrame to write.
+        output_dir:           directory to write the image file into.  Must exist.
+        filename_template:    Python format string (see module docstring), or
+                              None to use the default pattern.
+        xmp_namespace_uri:    URI for the custom XMP namespace.
+        xmp_namespace_prefix: prefix for the custom XMP namespace.
+
+    Returns:
+        (Path, ExtractedFrame) pair for the written file.
+
+    Raises:
+        OSError: if the file cannot be written.
+    """
+    pass
+
+
 def output_frames(
     frames: list[ExtractedFrame],
     output_dir: Path,
     filename_template: str | None = None,
+    xmp_namespace_uri: str = "https://soi-frame-extractor.org/xmp/v1/",
+    xmp_namespace_prefix: str = "sfe",
 ) -> list[tuple[Path, ExtractedFrame]]:
-    """Write extracted frames to disk and return paths paired with their frames.
+    """Write a list of extracted frames to disk and return paths paired with frames.
 
-    Creates output_dir if it does not exist.  Renders a filename for each
-    frame from filename_template (or the default if absent/broken), resolves
-    collisions, writes the image, and returns (path, frame) pairs ready to
-    pass to apply_metadata.
+    Creates output_dir if it does not exist.  Delegates each write to
+    write_frame, which embeds all metadata (EXIF, IPTC, XMP) in a single
+    Pillow save per frame.
+
+    No collision detection is performed.  Include {utc} in the filename
+    template to guarantee unique filenames — see write_frame for details.
 
     Args:
-        frames:            list of ExtractedFrame objects to write.
-        output_dir:        directory to write image files into.
-        filename_template: Python format string (see module docstring).
-                           If None, the default pattern is used.
+        frames:               list of ExtractedFrame objects to write.
+        output_dir:           directory to write image files into.
+        filename_template:    Python format string (see module docstring).
+                              If None, the default pattern is used.
+        xmp_namespace_uri:    URI for the custom XMP namespace.
+        xmp_namespace_prefix: prefix for the custom XMP namespace.
 
     Returns:
         List of (Path, ExtractedFrame) pairs in input order.
@@ -82,22 +124,6 @@ def output_frames(
     Raises:
         OSError: if output_dir cannot be created or a file cannot be written.
     """
-    # create output_dir (and any parents) if it does not exist
-    #
-    # seen: dict[str, int] mapping filename → collision counter
-    #
-    # results = []
-    # for each frame in frames:
-    #   filename = _render_filename(frame, filename_template)
-    #   if filename already in seen:
-    #     insert counter suffix before extension until unique
-    #     e.g. "foo.jpg" → "foo_001.jpg"
-    #   mark filename as seen
-    #   path = output_dir / filename
-    #   write frame.frame (NDArray H×W×3 uint8 RGB) to path
-    #   append (path, frame) to results
-    #
-    # return results
     pass
 
 

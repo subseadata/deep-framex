@@ -16,25 +16,21 @@ import argparse
 import sys
 from pathlib import Path
 
-from .config.spec_parser import spec_from_file
-from .config.video_discovery import discover_videos
-from .extraction.video_session import create_video_session
-from .planning.planner import plan
-from .extraction.frame_extractor import extract_frames
+from .pipeline import run
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
     """Run the full extraction pipeline from parsed CLI arguments.
 
-    Reads the extraction spec, discovers and probes video files, builds a
-    session, plans offsets, extracts frames, and writes them to the output
-    directory.
+    Delegates entirely to pipeline.run().  Catches known error types,
+    logs them to stderr, and returns a non-zero exit code.
 
     Args:
         args: parsed Namespace from the argument parser, containing:
             - args.source:  list[str] of one or more paths supplied by user
             - args.spec:    Path to the YAML extraction spec
             - args.output:  Path to the output directory for extracted frames
+            - args.data:    Path to sensor CSV (optional)
 
     Returns:
         0 on success, 1 on any handled error (logged to stderr).

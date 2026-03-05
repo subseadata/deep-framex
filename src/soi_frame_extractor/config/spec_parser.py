@@ -81,6 +81,12 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
         ValueError: if any constraint is missing 'column' or has a
                     non-numeric min/max value.
         ValueError: if 'mappings' is present but 'timestamp' is missing.
+
+    Optional top-level keys parsed into ExtractionSpec fields:
+        filename_template:    str | None
+        xmp_namespace_uri:    str | None  (model default if absent)
+        xmp_namespace_prefix: str | None  (model default if absent)
+        stream_output:        bool        (default False)
     """
     # raise ValueError if 'rules' key is absent or the list is empty
 

@@ -140,9 +140,30 @@ rules:
 # If the template cannot be rendered (missing key, bad syntax), the writer
 # warns to stderr and falls back to the default.
 #
+# STRONGLY RECOMMENDED: always include {utc} in your template.
+# The planner guarantees unique timestamps, so {utc} guarantees unique
+# filenames.  Templates that omit {utc} may silently overwrite frames
+# if any other variable (e.g. depth, latitude) repeats across frames.
+#
 # filename_template: "{dive_id}_{depth}m_T{utc}.jpg"
 # filename_template: "{latitude}_{longitude}_{utc}.tif"
 # filename_template: "{cruise_id}_{video_stem}_{utc}.jpg"
+
+
+# ---------------------------------------------------------------------------
+# OUTPUT MODE (optional)
+# ---------------------------------------------------------------------------
+# Controls whether frames are buffered per video or written immediately.
+#
+# Default (false): frames are buffered for each video and written after that
+#   video is fully extracted.  Memory usage scales with frames per video:
+#     4K @ 10s intervals, 10-min video → ~60 frames  (~1.4 GB)
+#     4K @  1s intervals, 10-min video → ~600 frames (~14.4 GB)
+#
+# Set to true if your machine cannot hold a full video's worth of frames in
+#   memory.  Frames are written to disk one at a time as they are decoded.
+#
+# stream_output: false
 
 
 # ---------------------------------------------------------------------------

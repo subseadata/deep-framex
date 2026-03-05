@@ -116,6 +116,7 @@ class ExtractionSpec(CustomBaseModel):
     xmp_namespace_uri: str = "https://soi-frame-extractor.org/xmp/v1/"
     xmp_namespace_prefix: str = "sfe"
     filename_template: str | None = None            # omit to use default naming
+    stream_output: bool = False                     # write each frame to disk immediately instead of buffering per video
 
 
 class VideoExtractionPlan(CustomBaseModel):
@@ -161,11 +162,14 @@ class MetadataDestination(CustomBaseModel):
     A None value for a layer means the field is not written there.
     Tag and property names follow the conventions of each standard and are
     resolved by the metadata writer at write time.
+
+    iFDO is not represented here — it is written as a standalone JSON sidecar
+    file for the whole image set, not embedded per-image.  iFDO field routing
+    is handled separately in output/ifdo.py.
     """
     exif: str | None = None
     iptc: str | None = None
     xmp: str | None = None
-    ifdo: str | None = None
 
 
 # Maps canonical field names to their prescribed metadata destinations.
