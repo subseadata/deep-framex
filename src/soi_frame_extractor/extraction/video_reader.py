@@ -30,7 +30,10 @@ def open_video(video_file: VideoFile) -> Video:
     Raises:
         FileNotFoundError: if video_file.path does not exist.
     """
-    pass
+    if not video_file.path.exists():
+        raise FileNotFoundError(f"Video file not found: {video_file.path}")
+    container = av.open(str(video_file.path))
+    return Video(file=video_file, container=container)
 
 
 def probe_video(path: Path) -> VideoFile:
