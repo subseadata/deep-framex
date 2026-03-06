@@ -2,13 +2,13 @@
 #
 # Every rule must have interval_s.
 # Optional rule arguments: periods, constraints
-#   period:
-#     - start: start time (UTC)
-#       end:   end time (UTC)
-#   constriaints:
-#     - column: name of the data column
-#       max:    maximum value (frames taken only less than this value)
-#       min:    minimum value (frames taken only greater than this value)
+#   periods:
+#     - start: start time (ISO 8601 UTC, e.g. "2025-10-15T10:25:00Z")
+#       end:   end time
+#   constraints:
+#     - column: canonical sensor name (left-hand side of your mappings block)
+#       max:    maximum value (only frames where column <= max are included)
+#       min:    minimum value (only frames where column >= min are included)
 #
 # Rule composition:
 #   Same rule  — periods and constraints are INTERSECTED
@@ -64,29 +64,61 @@ rules:
 # ---------------------------------------------------------------------------
 # MAPPINGS (required only if a sensor CSV is provided)
 # ---------------------------------------------------------------------------
-# Maps canonical field names to your CSV column names.
-# Fill in the value for each field that exists in your CSV.
-# Remove lines for fields you do not have.
+#
+# Tell the tool which columns to read from your CSV and what to call them.
+#
+#     name_for_this_tool: Column Name In Your CSV
+#
+# Left side  — the name the tool uses internally: in constraint rules above,
+#              in filename template variables, and in image metadata output.
+#              Use only letters, numbers, and underscores.  No spaces or
+#              special characters (e.g. write "velocityfwd" not "velocity_m/s").
+#
+# Right side — the exact column header as it appears in your CSV file.
+#              Copy it exactly, including any spaces or special characters.
+#              The tool reads by column name, so "VelocityFwd_m/s" is fine.
+#
+# Only the columns you list here are loaded.  Every other column in your CSV
+# is silently ignored — you do not need to remove them from the file.
+#
+# The names on the LEFT side determine where values end up in output metadata.
+# The tool recognises these specific names and writes them automatically to
+# the correct fields in EXIF, iFDO, and image files:
+#
+#   latitude  → GPS latitude  in image EXIF (GPSLatitude)  and iFDO manifest
+#   longitude → GPS longitude in image EXIF (GPSLongitude) and iFDO manifest
+#   depth     → depth in image EXIF (GPSAltitude, tagged below sea level) and iFDO
+#   altitude  → altitude above seafloor in iFDO manifest (image-altitude-meters)
+#   heading   → vehicle heading in iFDO manifest (image-heading)
+#   pitch     → vehicle pitch   in iFDO manifest (image-pitch)
+#   roll      → vehicle roll    in iFDO manifest (image-roll)
+#
+# Any other name you choose is also fine — the data is still stored and written
+# to the XMP layer of each image, just not to EXIF or iFDO.
+# Example: mapping "z: Depth_m" works, but the depth will only appear in XMP,
+# not in EXIF GPS fields.  Mapping "depth: Depth_m" puts it in all three.
 #
 # mappings:
 #
-#   # required if mappings block is present
-#   timestamp:   your_column
+#   # required — which column in your CSV holds the UTC timestamp
+#   timestamp:   Timestamp
 #
-#   # location — EXIF GPSLatitude/Ref, GPSLongitude/Ref, GPSAltitude/Ref + iFDO image-latitude/longitude/depth
-#   latitude:    your_column
-#   longitude:   your_column
-#   depth:       your_column
-#   altitude_m:  your_column    # iFDO image-altitude-meters
+#   # use these exact names on the left for automatic EXIF + iFDO output
+#   latitude:    Latitude_ddeg     # decimal degrees only (e.g. -44.2895); negative = south
+#                                   # DMS and degrees-decimal-minutes are not supported — convert first
+#   longitude:   Longitude_ddeg    # decimal degrees only (e.g. -59.9191); negative = west; 0–360 also accepted
+#                                   # DMS and degrees-decimal-minutes are not supported — convert first
+#   depth:       Depth_m           # positive number, metres below sea surface
+#   altitude:    Altitude_m        # metres above the seafloor
+#   heading:     HeadingTrue_deg   # degrees, 0–360, clockwise from north
+#   pitch:       Pitch_deg
+#   roll:        Roll_deg
 #
-#   # orientation — EXIF GPSImageDirection + iFDO image-heading/pitch/roll
-#   heading_deg: your_column
-#   pitch_deg:   your_column
-#   roll_deg:    your_column
-#
-#   # any other columns from your CSV — written to XMP soi: namespace
-#   temperature: your_column
-#   salinity:    your_column
+#   # any other columns you want — name them whatever makes sense to you
+#   # they will be saved and written to XMP metadata in each image
+#   temperature: Temp_degC
+#   salinity:    Salinity_psu
+#   velocityfwd: VelocityFwd_m/s   # the right side can have slashes, the left cannot
 
 
 # ---------------------------------------------------------------------------

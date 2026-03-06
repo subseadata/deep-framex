@@ -46,23 +46,32 @@ class VideoSession(CustomBaseModel):
 # ---------------------------------------------------------------------------
 
 class ColumnMappings(CustomBaseModel):
-    """Maps user CSV column names to canonical metadata field names.
+    """Tells the tool which CSV columns to read and what to call them.
 
-    timestamp is required — the user must always name which CSV column holds
-    the time reference.  latitude, longitude, and depth are optional — if
-    none are provided, extracted frames will carry no location metadata.
-    Any additional mappings the user supplies (e.g. temp, salinity) are
-    accepted as extra fields and written to XMP under their key name.
+    Each entry pairs the name the tool will use (the field name) with the
+    exact column header from the user's CSV file (the value).  For example:
 
-    Keys are the canonical names used in metadata output.
-    Values are the exact column names as they appear in the user's CSV.
+        ColumnMappings(timestamp="Timestamp", depth="Depth_m", latitude="Latitude_ddeg")
+
+    means: read the column called "Depth_m" from the CSV and refer to it as
+    "depth" everywhere in the tool — in constraint rules, filename templates,
+    and metadata output.
+
+    timestamp is required — the user must always say which CSV column holds
+    the time reference.  latitude, longitude, and depth are optional named
+    fields; using these exact names triggers automatic routing to EXIF GPS
+    tags and iFDO manifest fields.  Any additional entries the user supplies
+    (e.g. temperature, salinity) are accepted and written to XMP.
+
+    Only columns present here are imported from the CSV — everything else
+    is ignored.
     """
     model_config = ConfigDict(extra='allow')
 
-    timestamp: str                          # required — name of the timestamp column in the CSV
-    latitude: str | None = None
-    longitude: str | None = None
-    depth: str | None = None
+    timestamp: str                          # required — CSV column name for the UTC timestamp
+    latitude: str | None = None             # CSV column name for latitude (decimal degrees)
+    longitude: str | None = None            # CSV column name for longitude (decimal degrees)
+    depth: str | None = None                # CSV column name for depth (metres, positive)
 
 
 class ImportedDataset(CustomBaseModel):
@@ -72,9 +81,14 @@ class ImportedDataset(CustomBaseModel):
     Carries enough information for the planner to validate constraints and
     for the metadata writer to know which canonical fields are resolvable.
     The actual data lives in the session database, not in this model.
+
+    columns holds the canonical names (the keys from ColumnMappings) that
+    were imported — these are the DB column names in sensor_readings.
+    timestamp_column records the original CSV column name that was used as
+    the timestamp source; in the DB it is always stored as 'timestamp'.
     """
-    columns: list[str]          # sensor column names, excluding timestamp
-    timestamp_column: str       # name of the timestamp column in the CSV
+    columns: list[str]          # canonical sensor column names in the DB, excluding timestamp
+    timestamp_column: str       # original CSV column name used as the timestamp source
     row_count: int
     utc_start: datetime
     utc_end: datetime
