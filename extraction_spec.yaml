@@ -202,7 +202,36 @@ rules:
 # will warn you: "no frame extracted at t=####". Adjusting this value
 # can shift the grid to avoid that gap.
 #
-# initial_offset_s: 0.0
+# RECOMMENDED: if your sensor data file starts at exactly the same moment
+# as your first video, set initial_offset_s to at least a few seconds.
+# Sensor values at the very first frame would otherwise be extrapolated
+# (no readings exist before it), not interpolated.  A small offset ensures
+# every frame has sensor readings on both sides.
+#
+# initial_offset_s: 5.0
+
+
+# ---------------------------------------------------------------------------
+# INTERPOLATION WINDOW (optional)
+# ---------------------------------------------------------------------------
+# Number of sensor readings to use on each side of a frame timestamp when
+# computing interpolated sensor values.  Default is 2 (2 rows before + 2
+# rows after).
+#
+# Using multiple rows makes the interpolated value resistant to single
+# erratic readings.  The median of each side is computed, then the two
+# medians are linearly interpolated to the exact frame timestamp.
+#
+# Set to 1 to use only the single nearest reading on each side (original
+# behaviour, more sensitive to spikes).  Higher values smooth more
+# aggressively but may be inappropriate if your sensor data has genuinely
+# rapid changes (e.g. turbulent depth readings near the seafloor).
+#
+# If a frame timestamp falls outside the sensor data range entirely — before
+# the first reading or after the last — the tool will warn you and use the
+# nearest available readings rather than fail.
+#
+# interpolation_window: 2
 
 
 # ---------------------------------------------------------------------------

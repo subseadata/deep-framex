@@ -131,6 +131,7 @@ class ExtractionSpec(CustomBaseModel):
     xmp_namespace_prefix: str = "sfe"
     filename_template: str | None = None            # omit to use default naming
     initial_offset_s: float = 0.0                   # shift the sampling grid this many seconds from session start
+    interpolation_window: int = 2                   # number of sensor rows to use on each side when interpolating
     stream_output: bool = False                     # write each frame to disk immediately instead of buffering per video
 
 

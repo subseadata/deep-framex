@@ -20,6 +20,7 @@ import sqlite3
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from statistics import median
 
 from ..db.session_db import init_frame_plan_table
 from ..models.models import (
@@ -92,7 +93,7 @@ def plan(
             continue
         video_offsets.setdefault(vf.path, []).append(offset_s)
 
-        snapshot = _interpolate_sensor(utc.timestamp(), sensor_cols, conn) if sensor_cols else {}
+        snapshot = _interpolate_sensor(utc.timestamp(), sensor_cols, conn, spec.interpolation_window) if sensor_cols else {}
         frame_plan_rows.append((
             utc.isoformat(),
             str(vf.path),
@@ -323,50 +324,81 @@ def _interpolate_sensor(
     ts: float,
     sensor_cols: list[str],
     conn: sqlite3.Connection,
+    window: int = 2,
 ) -> dict[str, float]:
-    """Linearly interpolate all sensor columns at a Unix epoch timestamp.
+    """Interpolate all sensor columns at a Unix epoch timestamp.
 
-    Fetches the nearest row at or before ts and the nearest row at or after
-    ts, then interpolates between them.  If only one side is available (ts
-    is before or after all sensor data) the nearest row's values are used
-    as-is rather than extrapolating.
+    Fetches up to `window` rows on each side of ts, computes the median
+    timestamp and median value for each side, then linearly interpolates
+    between those two representative points.  Using multiple rows per side
+    makes the result robust to single erratic readings.
+
+    Warns (but does not raise) when one side has no rows — meaning the
+    frame timestamp is outside the sensor data range and values must be
+    extrapolated from the nearest available readings.  Partial windows
+    (fewer than `window` rows available but at least one) are used silently.
 
     Args:
         ts:          target timestamp as Unix epoch float.
         sensor_cols: list of sensor column names to interpolate.
         conn:        session database connection.
+        window:      number of rows to use on each side.  Default 2.
 
     Returns:
         Dict mapping each sensor column name to its interpolated value.
+        Empty dict if no sensor rows exist at all.
     """
     col_list = ", ".join(f'"{c}"' for c in sensor_cols)
+    utc_str = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
 
-    before = conn.execute(
+    before_rows = conn.execute(
         f"SELECT timestamp, {col_list} FROM sensor_readings "
-        "WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT 1",
-        (ts,),
-    ).fetchone()
+        "WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT ?",
+        (ts, window),
+    ).fetchall()
 
-    after = conn.execute(
+    after_rows = conn.execute(
         f"SELECT timestamp, {col_list} FROM sensor_readings "
-        "WHERE timestamp >= ? ORDER BY timestamp ASC LIMIT 1",
-        (ts,),
-    ).fetchone()
+        "WHERE timestamp >= ? ORDER BY timestamp ASC LIMIT ?",
+        (ts, window),
+    ).fetchall()
 
-    if before is None and after is None:
+    if not before_rows and not after_rows:
         return {}
-    if before is None:
-        return {col: float(after[i + 1]) for i, col in enumerate(sensor_cols)}  # type: ignore[index]
-    if after is None:
-        return {col: float(before[i + 1]) for i, col in enumerate(sensor_cols)}
-    if before[0] == after[0]:
-        # Exact match — no interpolation needed
-        return {col: float(before[i + 1]) for i, col in enumerate(sensor_cols)}
 
-    t0, t1 = before[0], after[0]
-    alpha = (ts - t0) / (t1 - t0)
+    if not before_rows:
+        warnings.warn(
+            f"Frame at {utc_str} is before all sensor data — "
+            f"values extrapolated from the {len(after_rows)} nearest reading(s). "
+            "Consider using initial_offset_s to shift sampling into the sensor data range.",
+            UserWarning,
+            stacklevel=3,
+        )
+        return {col: median(row[i + 1] for row in after_rows) for i, col in enumerate(sensor_cols)}
+
+    if not after_rows:
+        warnings.warn(
+            f"Frame at {utc_str} is after all sensor data — "
+            f"values extrapolated from the {len(before_rows)} nearest reading(s). "
+            "Ensure sensor logging continues until after the last video ends.",
+            UserWarning,
+            stacklevel=3,
+        )
+        return {col: median(row[i + 1] for row in before_rows) for i, col in enumerate(sensor_cols)}
+
+    t_before = median(row[0] for row in before_rows)
+    t_after = median(row[0] for row in after_rows)
+
+    if t_before >= t_after:
+        # Timestamps overlap — exact match in data, average all unique rows
+        unique = list({row[0]: row for row in before_rows + after_rows}.values())
+        return {col: median(row[i + 1] for row in unique) for i, col in enumerate(sensor_cols)}
+
+    alpha = (ts - t_before) / (t_after - t_before)
     return {
-        col: before[i + 1] + alpha * (after[i + 1] - before[i + 1])
+        col: median(row[i + 1] for row in before_rows)
+             + alpha * (median(row[i + 1] for row in after_rows)
+                        - median(row[i + 1] for row in before_rows))
         for i, col in enumerate(sensor_cols)
     }
 

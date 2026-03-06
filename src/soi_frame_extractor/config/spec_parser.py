@@ -164,6 +164,23 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
     # project_metadata (optional) — all values coerced to str
     project_metadata = {str(k): str(v) for k, v in raw.get('metadata', {}).items()}
 
+    # interpolation_window — top-level, must be a positive integer
+    raw_window = raw.get('interpolation_window', 2)
+    try:
+        interpolation_window = int(raw_window)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"'interpolation_window' must be a positive integer, got {raw_window!r}"
+        )
+    if interpolation_window < 1:
+        import warnings
+        warnings.warn(
+            f"'interpolation_window' must be at least 1 (got {interpolation_window}) — setting to 1.",
+            UserWarning,
+            stacklevel=2,
+        )
+        interpolation_window = 1
+
     # initial_offset_s — top-level, must be a non-negative number
     raw_offset = raw.get('initial_offset_s', 0.0)
     try:
@@ -191,6 +208,7 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
         project_metadata=project_metadata,
         filename_template=raw.get('filename_template'),
         initial_offset_s=initial_offset_s,
+        interpolation_window=interpolation_window,
         stream_output=bool(raw.get('stream_output', False)),
         **kwargs,
     )
