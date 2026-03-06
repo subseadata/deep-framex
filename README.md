@@ -51,12 +51,12 @@ rules:
       - column: depth
         max: 500
 
-mappings:                    # omit entirely if no sensor CSV is provided
-  timestamp: utc_time        # required if mappings is present
-  latitude:  lat             # optional — enables GPS metadata in output frames
-  longitude: lon             # optional — accepts -180/+180 or 0-360
-  depth:     z               # optional
-  temp:      temperature_c   # any additional columns are accepted
+mappings:                       # omit entirely if no sensor CSV is provided
+  timestamp:   Timestamp        # required — your CSV column that holds UTC time
+  latitude:    Latitude_ddeg    # your CSV column for latitude
+  longitude:   Longitude_ddeg   # your CSV column for longitude
+  depth:       Depth_m          # your CSV column for depth
+  temperature: Temp_degC        # any other columns you want to use
 
 metadata:                    # optional — arbitrary key/value pairs
   cruise_id: FK250101        # written to XMP and iFDO in all output frames
@@ -72,6 +72,36 @@ xmp_namespace_prefix: sfe                                       # optional
 ```
 
 All timestamps must be ISO 8601 with an explicit UTC offset (`Z` or `+00:00`).
+
+### Mapping your sensor data
+
+The `mappings` block tells the tool which columns to read from your CSV and what to call them.  Each line follows this pattern:
+
+```
+name_for_this_tool: Column Name In Your CSV
+```
+
+**The right side** is your CSV column header, copied exactly as it appears — including any spaces or special characters.  If your spreadsheet column title says `VelocityFwd_m/s`, write `VelocityFwd_m/s` on the right.
+
+**The left side** is the name the tool will use for that column — in constraint rules, filename templates, and image metadata.  It must contain only letters, numbers, and underscores (no spaces, slashes, or special characters).  If your CSV has `VelocityFwd_m/s` and you want to use it, write something like `velocityfwd` on the left.
+
+**Only the columns you list are loaded.**  Everything else in your CSV is ignored — columns with string labels, status flags, or other non-numeric content are fine as long as you do not map them.  Any column you *do* map must contain numeric values; the import will fail with an error if it finds something it cannot convert to a number.
+
+The names on the left side matter for metadata output.  The tool recognises these specific names and writes them to the correct fields in image EXIF tags and the iFDO manifest automatically:
+
+| Left-side name | Where it goes |
+|---|---|
+| `latitude` | EXIF GPSLatitude + iFDO image-latitude — **decimal degrees only** (e.g. `-44.2895`), negative = south. Degrees-minutes-seconds and degrees-decimal-minutes are not supported — convert to decimal degrees first. |
+| `longitude` | EXIF GPSLongitude + iFDO image-longitude — **decimal degrees only** (e.g. `-59.9191`), negative = west; 0–360 also accepted. Degrees-minutes-seconds and degrees-decimal-minutes are not supported — convert to decimal degrees first. |
+| `depth` | EXIF GPSAltitude (below sea level) + iFDO image-depth |
+| `altitude` | iFDO image-altitude-meters |
+| `heading` | iFDO image-heading |
+| `pitch` | iFDO image-pitch |
+| `roll` | iFDO image-roll |
+
+Any other name you choose is fine — the values will be saved and written to the XMP layer of each image, just not to EXIF or iFDO.  For example, mapping `z: Depth_m` will store the depth values and write them to XMP, but they will not appear in EXIF GPS fields.  Mapping `depth: Depth_m` puts them everywhere.
+
+The `timestamp` entry is required if you provide a CSV.  It tells the tool which column holds the UTC time for each sensor reading.
 
 **Rule composition:** periods and constraints on the *same* rule intersect — frames are only extracted where all conditions are simultaneously met.  Separate rules are unioned — each rule contributes its timestamps independently and the planner deduplicates before extraction.
 
@@ -114,11 +144,11 @@ src/soi_frame_extractor/
 
 ### data importer
 - loads a CSV file from a local path
-- validates column names as legal identifiers; rejects non-float data columns
-- writes all rows into the session database `sensor_readings` table under a dynamically-built schema matching the CSV headers
-- timestamp column is required and named explicitly by the user in the YAML `mappings:` block
-- no assumptions about which sensor columns are present — one or thirty are equally valid
-- returns an `ImportedDataset` describing available columns and time range
+- reads only the columns listed in the `mappings:` block — every other column in the CSV is ignored
+- left-side mapping names become the column names in the database; right-side CSV column names are only used at import time
+- validates that left-side names are legal identifiers (letters, digits, underscores); right-side CSV names can contain anything
+- all sensor values must be numeric (castable to float); timestamp must be ISO 8601 UTC
+- returns an `ImportedDataset` describing which columns were loaded and the time range of the data
 
 ### session database
 - holds two tables for the duration of one extraction run, then is discarded

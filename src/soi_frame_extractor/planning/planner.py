@@ -17,6 +17,7 @@ Rule composition:
 
 import json
 import sqlite3
+import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -67,7 +68,9 @@ def plan(
     all_timestamps: set[datetime] = set()
     for rule in spec.rules:
         windows = _rule_windows(rule, session, conn)
-        all_timestamps.update(_sample_timestamps(windows, rule.interval_s))
+        all_timestamps.update(
+            _sample_timestamps(windows, rule.interval_s, spec.initial_offset_s)
+        )
 
     # Check once whether sensor data is available
     sensor_cols = _sensor_columns(conn)
@@ -76,7 +79,17 @@ def plan(
     frame_plan_rows = []
 
     for utc in sorted(all_timestamps):
-        vf, offset_s = _assign_to_video(utc, session)
+        try:
+            vf, offset_s = _assign_to_video(utc, session)
+        except ValueError:
+            warnings.warn(
+                f"Sampling interval hit a gap in the video session — "
+                f"no frame extracted at {utc.isoformat()}. "
+                "Check for missing video files or adjust initial_offset_s.",
+                UserWarning,
+                stacklevel=2,
+            )
+            continue
         video_offsets.setdefault(vf.path, []).append(offset_s)
 
         snapshot = _interpolate_sensor(utc.timestamp(), sensor_cols, conn) if sensor_cols else {}
@@ -254,16 +267,24 @@ def _intersect_windows(
 def _sample_timestamps(
     windows: list[TimePeriod],
     interval_s: float,
+    initial_offset_s: float = 0.0,
 ) -> list[datetime]:
     """Sample UTC timestamps at interval_s across a list of time windows.
 
-    Walks each window from its start, emitting a timestamp every interval_s
-    seconds until the window end is reached.  Does not carry remainder
-    across window boundaries — each window starts fresh at its own start.
+    Walks each window from its start plus initial_offset_s, emitting a
+    timestamp every interval_s seconds until the window end is reached.
+    Does not carry remainder across window boundaries — each window starts
+    fresh at its own start plus the offset.
+
+    Each step is computed as window.start + initial_offset_s + n*interval_s
+    rather than accumulated additions, avoiding floating-point drift over
+    long sessions.
 
     Args:
-        windows:    list of TimePeriod to sample within.
-        interval_s: sampling interval in seconds.
+        windows:          list of TimePeriod to sample within.
+        interval_s:       sampling interval in seconds.
+        initial_offset_s: shift the first sample this many seconds from
+                          each window start.  Defaults to 0.
 
     Returns:
         Sorted list of datetime timestamps.
@@ -272,9 +293,7 @@ def _sample_timestamps(
     for window in windows:
         n = 0
         while True:
-            # Compute each step from the window start rather than accumulating
-            # additions — avoids floating-point drift over long sessions.
-            t = window.start + timedelta(seconds=n * interval_s)
+            t = window.start + timedelta(seconds=initial_offset_s + n * interval_s)
             if t > window.end:
                 break
             timestamps.append(t)

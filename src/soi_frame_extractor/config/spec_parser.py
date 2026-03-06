@@ -164,6 +164,19 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
     # project_metadata (optional) — all values coerced to str
     project_metadata = {str(k): str(v) for k, v in raw.get('metadata', {}).items()}
 
+    # initial_offset_s — top-level, must be a non-negative number
+    raw_offset = raw.get('initial_offset_s', 0.0)
+    try:
+        initial_offset_s = float(raw_offset)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"'initial_offset_s' must be a non-negative number, got {raw_offset!r}"
+        )
+    if initial_offset_s < 0:
+        raise ValueError(
+            f"'initial_offset_s' must be non-negative, got {initial_offset_s}"
+        )
+
     # optional top-level fields — only pass XMP overrides if explicitly set,
     # so the model defaults apply when the user omits them
     kwargs: dict = {}
@@ -177,6 +190,7 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
         mappings=mappings,
         project_metadata=project_metadata,
         filename_template=raw.get('filename_template'),
+        initial_offset_s=initial_offset_s,
         stream_output=bool(raw.get('stream_output', False)),
         **kwargs,
     )

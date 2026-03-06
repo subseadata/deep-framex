@@ -183,6 +183,29 @@ rules:
 
 
 # ---------------------------------------------------------------------------
+# INITIAL OFFSET (optional)
+# ---------------------------------------------------------------------------
+# Shift the sampling grid this many seconds from the start of the session.
+# Applies to every rule — this is a session-level setting, not per-rule.
+#
+# Default (0): sampling starts at the first frame of the first video.
+#
+# Use this if your sampling interval lands in a known gap between video
+# files and you want to shift the grid to avoid it, or if your science
+# requires frames to start at a specific offset into the dive.
+#
+# Example: interval_s=30 with initial_offset_s=10 gives frames at
+#   session_start+10s, +40s, +70s, +100s, ...  instead of
+#   session_start+0s,  +30s, +60s, +90s, ...
+#
+# If a sampling timestamp lands in a gap between video files the tool
+# will warn you: "no frame extracted at t=####". Adjusting this value
+# can shift the grid to avoid that gap.
+#
+# initial_offset_s: 0.0
+
+
+# ---------------------------------------------------------------------------
 # OUTPUT MODE (optional)
 # ---------------------------------------------------------------------------
 # Controls whether frames are buffered per video or written immediately.

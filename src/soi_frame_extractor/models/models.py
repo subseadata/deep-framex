@@ -130,6 +130,7 @@ class ExtractionSpec(CustomBaseModel):
     xmp_namespace_uri: str = "https://soi-frame-extractor.org/xmp/v1/"
     xmp_namespace_prefix: str = "sfe"
     filename_template: str | None = None            # omit to use default naming
+    initial_offset_s: float = 0.0                   # shift the sampling grid this many seconds from session start
     stream_output: bool = False                     # write each frame to disk immediately instead of buffering per video
 
 
