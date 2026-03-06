@@ -27,6 +27,7 @@ from ..db.session_db import init_frame_plan_table
 from ..models.models import (
     ExtractionRule,
     ExtractionSpec,
+    FrameSpec,
     TimePeriod,
     VideoExtractionPlan,
     VideoFile,
@@ -86,7 +87,9 @@ def plan(
     # lookups inside the per-frame loop below.
     sensor_cols = _sensor_columns(conn)
 
-    video_offsets: dict[Path, list[float]] = {}
+    # video_frames accumulates FrameSpec objects per video, keeping offset and
+    # sensor snapshot together so they can never get out of sync.
+    video_frames: dict[Path, list[FrameSpec]] = {}
     frame_plan_rows = []
 
     for utc in sorted(all_timestamps):
@@ -103,12 +106,17 @@ def plan(
                 stacklevel=2,
             )
             continue
-        video_offsets.setdefault(vf.path, []).append(offset_s)
 
-        # Interpolate sensor readings at this exact timestamp and store the result
-        # alongside the frame plan row.  Downstream stages (extractor, metadata
-        # writer) read from frame_plan and never touch sensor_readings again.
+        # Interpolate sensor readings at this exact timestamp.
         snapshot = _interpolate_sensor(utc.timestamp(), sensor_cols, conn, spec.interpolation_window) if sensor_cols else {}
+
+        # Keep offset and snapshot together in a FrameSpec — the plan is self-contained
+        # and the extractor needs no database access.
+        video_frames.setdefault(vf.path, []).append(
+            FrameSpec(offset_s=offset_s, sensor_snapshot=snapshot)
+        )
+
+        # frame_plan still records progress status for diagnostics and future resume support.
         frame_plan_rows.append((
             utc.isoformat(),
             str(vf.path),
@@ -125,11 +133,17 @@ def plan(
     )
     conn.commit()
 
-    # Return one plan per video that has at least one frame, in session order.
+    # Return one self-contained plan per video that has at least one frame, in session order.
+    # Timestamps are processed in sorted(all_timestamps) order, so frames within each
+    # video are already in ascending offset order — no secondary sort needed.
     return [
-        VideoExtractionPlan(video_file=vf, offsets_s=sorted(video_offsets[vf.path]))
+        VideoExtractionPlan(
+            video_file=vf,
+            frames=video_frames[vf.path],
+            project_metadata=spec.project_metadata,
+        )
         for vf in session.videos
-        if vf.path in video_offsets
+        if vf.path in video_frames
     ]
 
 

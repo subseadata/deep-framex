@@ -247,7 +247,59 @@ rules:
 # Set to true if your machine cannot hold a full video's worth of frames in
 #   memory.  Frames are written to disk one at a time as they are decoded.
 #
+# Strongly recommended when using max_workers > 1 — without it, peak memory
+# multiplies by the number of workers running at the same time.
+#
 # stream_output: false
+
+
+# ---------------------------------------------------------------------------
+# PARALLEL EXTRACTION (optional)
+# ---------------------------------------------------------------------------
+# Number of worker processes to use for extraction.
+# Default (1): videos are extracted one at a time on a single core.
+#
+# Set to the number of video files in your session (or to the number of CPU
+# cores available) to extract all videos simultaneously.  Each worker handles
+# exactly one video file and runs independently — no shared state.
+#
+# Best practices:
+#
+#   - Always set stream_output: true when max_workers > 1.
+#     Each worker otherwise buffers a full video's decoded frames in memory.
+#     With 4K video at 10s intervals and 4 workers that is roughly 5–6 GB.
+#     stream_output: true keeps peak memory to one frame (~24 MB) per worker.
+#
+#   - Include {utc} in your filename_template.
+#     Workers write to the same output directory.  The planner guarantees
+#     unique timestamps, so {utc} guarantees unique filenames across all
+#     workers with no collision risk.
+#
+#   - Set max_workers to min(number of videos, number of CPU cores).
+#     Spawning more workers than videos provides no benefit.
+#
+# Local multiprocessing (this setting):
+#   Uses Python's ProcessPoolExecutor — one subprocess per video, each with
+#   its own memory space.  Works on Linux and macOS out of the box.
+#
+# Distributed / cloud workers (Kubernetes, Airflow, AWS Batch, etc.):
+#   max_workers controls local processes only.  For true distributed execution,
+#   use the library's stage functions directly: call plan() to produce
+#   VideoExtractionPlan objects, serialise each to JSON with
+#   plan.model_dump_json(), dispatch to your workers, and collect results.
+#   See pipeline/__init__.py for the exact dispatch pattern to replace.
+#
+#   Each worker only needs its own video file — it does not need the sensor
+#   CSV, the session database, or any other video file.
+#
+#   NOTE on remote video (S3, GCS, HTTP):
+#   Workers open video files from the path stored in VideoExtractionPlan.
+#   For cloud-hosted video, this path must either be a local copy (downloaded
+#   before the worker runs) or a URL.  PyAV can open HTTP/HTTPS URLs directly;
+#   S3/GCS support depends on your ffmpeg build.  Direct remote URL support
+#   is not yet implemented — download the file first.
+#
+# max_workers: 1
 
 
 # ---------------------------------------------------------------------------

@@ -51,7 +51,7 @@ collisions if sensor values repeat across frames.
 import sys
 from pathlib import Path
 
-from ..models.models import ExtractedFrame
+from ..models.models import ExtractedFrame, FrameMetadata
 
 _DEFAULT_TEMPLATE = "{utc}_{video_stem}.jpg"
 
@@ -65,18 +65,26 @@ def write_frame(
     filename_template: str | None,
     xmp_namespace_uri: str,
     xmp_namespace_prefix: str,
-) -> tuple[Path, ExtractedFrame]:
+) -> tuple[Path, FrameMetadata]:
     """Write a single frame to disk with all metadata embedded in one save.
 
     Renders a filename, builds EXIF, IPTC, and XMP blocks via the metadata
     builders in apply_metadata, then saves the image once via Pillow with
     all metadata included.  output_dir must already exist.
 
-    No collision detection is performed.  If two frames render to the same
-    filename the second will overwrite the first.  This is effectively
-    impossible when the template includes {utc} (strongly recommended) since
-    the planner guarantees unique timestamps.  Templates that omit {utc} may
-    produce collisions if sensor values repeat across frames.
+    Returns the path and metadata only — the pixel data is written to disk and
+    can be discarded.  The returned FrameMetadata is sufficient for the caller
+    to build an iFDO manifest without holding pixel arrays in memory.
+
+    No collision detection is performed.  Include {utc} in the template
+    (strongly recommended) — the planner guarantees unique timestamps, so {utc}
+    guarantees unique filenames.  Templates that omit {utc} may produce
+    collisions if sensor values repeat across frames.
+
+    NOTE for cloud output: this function writes to a local output_dir.  For
+    writing directly to S3 or GCS, replace the Pillow save call with an
+    upload to the target bucket.  The rest of the function (filename rendering,
+    metadata building) is storage-agnostic.
 
     Args:
         frame:                ExtractedFrame to write.
@@ -87,7 +95,7 @@ def write_frame(
         xmp_namespace_prefix: prefix for the custom XMP namespace.
 
     Returns:
-        (Path, ExtractedFrame) pair for the written file.
+        (Path, FrameMetadata) — path to the written file and its metadata.
 
     Raises:
         OSError: if the file cannot be written.
@@ -101,12 +109,15 @@ def output_frames(
     filename_template: str | None = None,
     xmp_namespace_uri: str = "https://soi-frame-extractor.org/xmp/v1/",
     xmp_namespace_prefix: str = "sfe",
-) -> list[tuple[Path, ExtractedFrame]]:
-    """Write a list of extracted frames to disk and return paths paired with frames.
+) -> list[tuple[Path, FrameMetadata]]:
+    """Write a list of extracted frames to disk and return paths with metadata.
 
     Creates output_dir if it does not exist.  Delegates each write to
     write_frame, which embeds all metadata (EXIF, IPTC, XMP) in a single
     Pillow save per frame.
+
+    Returns (Path, FrameMetadata) pairs — pixel data is written and discarded.
+    The returned list is sufficient for building an iFDO manifest.
 
     No collision detection is performed.  Include {utc} in the filename
     template to guarantee unique filenames — see write_frame for details.
@@ -120,7 +131,7 @@ def output_frames(
         xmp_namespace_prefix: prefix for the custom XMP namespace.
 
     Returns:
-        List of (Path, ExtractedFrame) pairs in input order.
+        List of (Path, FrameMetadata) pairs in input order.
 
     Raises:
         OSError: if output_dir cannot be created or a file cannot be written.

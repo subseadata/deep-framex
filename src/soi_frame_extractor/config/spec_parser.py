@@ -194,6 +194,19 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
             f"'initial_offset_s' must be non-negative, got {initial_offset_s}"
         )
 
+    # max_workers — top-level, must be a positive integer
+    raw_workers = raw.get('max_workers', 1)
+    try:
+        max_workers = int(raw_workers)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"'max_workers' must be a positive integer, got {raw_workers!r}"
+        )
+    if max_workers < 1:
+        raise ValueError(
+            f"'max_workers' must be at least 1, got {max_workers}"
+        )
+
     # optional top-level fields — only pass XMP overrides if explicitly set,
     # so the model defaults apply when the user omits them
     kwargs: dict = {}
@@ -210,5 +223,6 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
         initial_offset_s=initial_offset_s,
         interpolation_window=interpolation_window,
         stream_output=bool(raw.get('stream_output', False)),
+        max_workers=max_workers,
         **kwargs,
     )

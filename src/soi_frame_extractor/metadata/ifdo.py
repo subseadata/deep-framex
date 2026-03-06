@@ -48,12 +48,12 @@ iFDO fields written per image (where values are present in FrameMetadata):
 
 from pathlib import Path
 
-from ..models.models import ExtractedFrame
+from ..models.models import FrameMetadata
 from ..utils.coordinates import normalize_longitude
 
 
 def write_ifdo_manifest(
-    written: list[tuple[Path, ExtractedFrame]],
+    written: list[tuple[Path, FrameMetadata]],
     output_dir: Path,
 ) -> Path:
     """Write an iFDO JSON sidecar manifest for a completed extraction run.
@@ -62,10 +62,13 @@ def write_ifdo_manifest(
     from project_metadata shared across all frames, and writes the manifest as
     a JSON file into output_dir.
 
+    Entries are sorted by utc_timestamp before writing so the manifest is in
+    chronological order regardless of the order workers finished.
+
     Args:
-        written:    list of (path, ExtractedFrame) pairs as returned by
-                    output_frames or accumulated during streaming extraction.
-                    Order is preserved in the manifest.
+        written:    list of (path, FrameMetadata) pairs — as returned by
+                    output_frames, or collected from streaming / parallel workers.
+                    Pixel data is not needed here and should already be discarded.
         output_dir: directory where the manifest will be written.  Must exist.
 
     Returns:

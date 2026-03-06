@@ -133,11 +133,26 @@ class ExtractionSpec(CustomBaseModel):
     initial_offset_s: float = 0.0                   # shift the sampling grid this many seconds from session start
     interpolation_window: int = 2                   # number of sensor rows to use on each side when interpolating
     stream_output: bool = False                     # write each frame to disk immediately instead of buffering per video
+    max_workers: int = 1                            # worker processes for extraction; 1 = sequential, >1 = parallel
+
+
+class FrameSpec(CustomBaseModel):
+    """One planned frame: the offset to seek to and the sensor values at that moment.
+
+    Keeping offset and snapshot together means they can never get out of sync,
+    and the plan object is self-contained — no database needed at extraction time.
+    """
+    offset_s: float                     # seconds from t=0 in the source video
+    sensor_snapshot: dict[str, float] = {}  # interpolated sensor values at this timestamp
 
 
 class VideoExtractionPlan(CustomBaseModel):
     video_file: VideoFile
-    offsets_s: list[float]              # seconds from t=0, sorted ascending
+    frames: list[FrameSpec]             # planned frames in ascending offset order
+    project_metadata: dict[str, str] = {}  # passed through to every frame's metadata
+    # NOTE: video_file.path must be resolvable on whatever machine runs extract_frames.
+    # For distributed workers this means a shared filesystem, pre-staged local copy,
+    # or (future) a URL string — see open_video in video_reader.py.
 
 
 # ---------------------------------------------------------------------------
