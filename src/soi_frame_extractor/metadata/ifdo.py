@@ -34,10 +34,10 @@ iFDO fields written per image (where values are present in FrameMetadata):
     image-latitude          — from sensor_snapshot latitude
     image-longitude         — from sensor_snapshot longitude (normalised)
     image-depth             — from sensor_snapshot depth
-    image-altitude-meters   — from sensor_snapshot altitude_m
-    image-heading           — from sensor_snapshot heading_deg
-    image-pitch             — from sensor_snapshot pitch_deg
-    image-roll              — from sensor_snapshot roll_deg
+    image-altitude-meters   — from sensor_snapshot altitude
+    image-heading           — from sensor_snapshot heading
+    image-pitch             — from sensor_snapshot pitch
+    image-roll              — from sensor_snapshot roll
     image-sequence-name     — from project_metadata cruise_id
     image-deployment-id     — from project_metadata dive_id
     image-platform          — nested: {"name": vehicle}

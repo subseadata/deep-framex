@@ -6,10 +6,10 @@ and the frame plan for a single extraction session.
 Two tables:
 
     sensor_readings  — one row per sensor observation from the imported CSV.
-                       Schema is created dynamically from CSV column names at
-                       import time; the timestamp column is always the primary
-                       key (stored as Unix epoch float for efficient range
-                       queries during planning).
+                       Schema is created dynamically from the names in the
+                       user's mappings block at import time; the timestamp
+                       column is always the primary key (stored as Unix epoch
+                       float for efficient range queries during planning).
 
     frame_plan       — one row per frame to extract.  Populated by the planner
                        after applying interval, period, and sensor constraints.
