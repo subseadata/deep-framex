@@ -16,6 +16,9 @@ dependencies = [
 [project.scripts]
 soi-extract = "soi_frame_extractor.cli:main"
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling"
+requires = ["setuptools>=64"]
+build-backend = "setuptools.backends.legacy:build"

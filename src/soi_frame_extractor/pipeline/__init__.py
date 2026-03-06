@@ -34,7 +34,7 @@ NOTE for cloud / distributed use: _extract_and_write_video is a plain function
 that takes a serialisable VideoExtractionPlan.  For Kubernetes, Airflow, or
 any task queue, replace the ProcessPoolExecutor block with your dispatcher:
 serialise each plan to JSON (plan.model_dump_json()), send to a worker, collect
-list[tuple[str, FrameMetadata]] results, then call write_ifdo_manifest.
+list[tuple[Path, FrameMetadata]] results, then call write_ifdo_manifest.
 Each worker only needs access to its own video file — see frame_extractor.py
 for notes on remote (S3/GCS) video support.
 """
@@ -203,7 +203,7 @@ def run(
         # Each worker is independent — no shared state, no shared database.
         # NOTE: for Kubernetes / Airflow / cloud workers, replace this block with
         # your task dispatcher.  Serialise each plan with plan.model_dump_json(),
-        # send to workers, collect list[tuple[str, FrameMetadata]] results here.
+        # send to workers, collect list[tuple[Path, FrameMetadata]] results here.
         with ProcessPoolExecutor(max_workers=effective_workers) as executor:
             futures = {
                 executor.submit(_extract_and_write_video, video_plan, *worker_args): video_plan
