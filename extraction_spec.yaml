@@ -259,9 +259,9 @@ rules:
 # Number of worker processes to use for extraction.
 # Default (1): videos are extracted one at a time on a single core.
 #
-# Set to the number of video files in your session (or to the number of CPU
-# cores available) to extract all videos simultaneously.  Each worker handles
-# exactly one video file and runs independently — no shared state.
+# Set to the number of CPU cores you want to use.  Workers pull from the queue
+# of videos — 5 workers and 27 videos keeps all 5 busy until all 27 are done.
+# Each worker handles one video at a time and runs independently — no shared state.
 #
 # Best practices:
 #

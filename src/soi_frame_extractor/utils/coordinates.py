@@ -20,7 +20,9 @@ def normalize_longitude(lon: float) -> float:
     Returns:
         Longitude in decimal degrees in the range −180 ≤ lon ≤ 180.
     """
-    pass
+    if lon > 180.0:
+        return lon - 360.0
+    return lon
 
 
 def decimal_to_dms(degrees: float) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
@@ -40,7 +42,11 @@ def decimal_to_dms(degrees: float) -> tuple[tuple[int, int], tuple[int, int], tu
         Tuple of three (int, int) pairs: (deg_num, 1), (min_num, 1),
         (sec_num, 10000) where sec_num is seconds × 10000.
     """
-    pass
+    d = int(degrees)
+    remainder = degrees - d
+    m = int(remainder * 60)
+    s = (remainder * 60 - m) * 60
+    return (d, 1), (m, 1), (round(s * 10000), 10000)
 
 
 def decimal_to_ref(value: float, axis: str) -> str:
@@ -56,4 +62,8 @@ def decimal_to_ref(value: float, axis: str) -> str:
     Raises:
         ValueError: if axis is not "lat" or "lon".
     """
-    pass
+    if axis == "lat":
+        return "N" if value >= 0 else "S"
+    elif axis == "lon":
+        return "E" if value >= 0 else "W"
+    raise ValueError(f"axis must be 'lat' or 'lon', got '{axis}'")

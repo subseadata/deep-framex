@@ -204,8 +204,23 @@ class MetadataDestination(CustomBaseModel):
 
 
 # Maps canonical field names to their prescribed metadata destinations.
-# The metadata writer consults this to route known fields to the correct
-# layer and tag.  Anything not in this registry goes to XMP under its
-# original column name.  Populated at implementation time once tag
-# references are confirmed against each standard.
-FIELD_REGISTRY: dict[str, MetadataDestination] = {}
+# Fields in this registry are written to the listed layer(s) and are NOT
+# duplicated in the XMP custom namespace.  Fields absent from this registry
+# fall through to XMP automatically.
+#
+# iFDO routing is not represented here — iFDO is a standalone JSON sidecar
+# written once per run by metadata/ifdo.py, not embedded per-image.
+FIELD_REGISTRY: dict[str, MetadataDestination] = {
+    # Sensor fields written to EXIF GPS tags
+    "latitude":     MetadataDestination(exif="GPSLatitude"),
+    "longitude":    MetadataDestination(exif="GPSLongitude"),
+    "depth":        MetadataDestination(exif="GPSAltitude"),
+    # Project metadata fields written to IPTC
+    "credit":       MetadataDestination(iptc="Credit"),
+    "source":       MetadataDestination(iptc="Source"),
+    "copyright":    MetadataDestination(iptc="CopyrightNotice"),
+    "caption":      MetadataDestination(iptc="Caption-Abstract"),
+    # Project metadata fields written to EXIF
+    "camera_make":  MetadataDestination(exif="Make"),
+    "camera_model": MetadataDestination(exif="Model"),
+}

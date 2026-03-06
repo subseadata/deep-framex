@@ -5,17 +5,18 @@ returns metadata in the format expected by Pillow at save time, so all
 layers are embedded in a single file write — no post-hoc re-opening.
 
     _build_exif(meta) → bytes   piexif-encoded EXIF block
-    _build_iptc(meta) → bytes   raw IPTC IIM block
+    _build_iptc(meta) → bytes   raw IPTC IIM block (APP13 Photoshop 3.0 wrapper)
     _build_xmp(meta, ns_uri, ns_prefix) → bytes   serialised XMP packet
 
 iFDO is NOT handled here.  iFDO is a standalone JSON sidecar file written
 once per extraction run by metadata/ifdo.py — it is not embedded in image files.
 
-Routing is governed by FIELD_REGISTRY for known canonical fields (utc_timestamp,
-latitude, longitude, depth, etc.).  Any sensor column or project_metadata key
-not present in FIELD_REGISTRY is written to XMP under a user-configurable
-custom namespace.  The namespace URI and prefix are taken from ExtractionSpec
-(xmp_namespace_uri, xmp_namespace_prefix) and default to
+Routing is governed by FIELD_REGISTRY for known fields (latitude, longitude,
+depth, credit, source, copyright, caption, camera_make, camera_model).
+Any sensor column or project_metadata key not present in FIELD_REGISTRY is
+written to XMP under a user-configurable custom namespace.  The namespace
+URI and prefix are taken from ExtractionSpec (xmp_namespace_uri,
+xmp_namespace_prefix) and default to
 "https://soi-frame-extractor.org/xmp/v1/" / "sfe".
 
 Coordinate conventions:
@@ -35,14 +36,13 @@ This module does not validate that the image format supports all layers;
 callers should use JPEG or TIFF which support the full set.
 """
 
-from pathlib import Path
+import struct
+from datetime import datetime, timezone
+
+import piexif
 
 from ..models.models import FIELD_REGISTRY, FrameMetadata
 from ..utils.coordinates import decimal_to_dms, decimal_to_ref, normalize_longitude
-
-_DEFAULT_XMP_NS_URI = "https://soi-frame-extractor.org/xmp/v1/"
-_DEFAULT_XMP_NS_PREFIX = "sfe"
-
 
 def _build_exif(meta: FrameMetadata) -> bytes:
     """Build a piexif-encoded EXIF block from FrameMetadata.
@@ -70,7 +70,50 @@ def _build_exif(meta: FrameMetadata) -> bytes:
     Returns:
         piexif-encoded bytes ready to pass to Pillow's exif parameter at save time.
     """
-    pass
+    ifd0: dict = {}
+    exif_ifd: dict = {}
+    gps_ifd: dict = {}
+
+    # Timestamp
+    dt_str = meta.utc_timestamp.strftime("%Y:%m:%d %H:%M:%S")
+    exif_ifd[piexif.ExifIFD.DateTimeOriginal] = dt_str.encode()
+    gps_ifd[piexif.GPSIFD.GPSDateStamp] = meta.utc_timestamp.strftime("%Y:%m:%d").encode()
+    h = meta.utc_timestamp.hour
+    m = meta.utc_timestamp.minute
+    s = meta.utc_timestamp.second
+    gps_ifd[piexif.GPSIFD.GPSTimeStamp] = [(h, 1), (m, 1), (s, 1)]
+
+    # GPS latitude
+    lat = meta.sensor_snapshot.get("latitude")
+    if lat is not None:
+        gps_ifd[piexif.GPSIFD.GPSLatitude] = decimal_to_dms(abs(lat))
+        gps_ifd[piexif.GPSIFD.GPSLatitudeRef] = decimal_to_ref(lat, "lat").encode()
+
+    # GPS longitude (normalise 0–360 → −180/+180 first)
+    lon = meta.sensor_snapshot.get("longitude")
+    if lon is not None:
+        lon = normalize_longitude(lon)
+        gps_ifd[piexif.GPSIFD.GPSLongitude] = decimal_to_dms(abs(lon))
+        gps_ifd[piexif.GPSIFD.GPSLongitudeRef] = decimal_to_ref(lon, "lon").encode()
+
+    # GPS altitude — depth as positive magnitude, tagged below sea level
+    depth = meta.sensor_snapshot.get("depth")
+    if depth is not None:
+        depth_abs = abs(depth)
+        depth_int = round(depth_abs * 100)
+        gps_ifd[piexif.GPSIFD.GPSAltitude] = (depth_int, 100)
+        gps_ifd[piexif.GPSIFD.GPSAltitudeRef] = b"\x01"
+
+    # Camera make / model from project metadata
+    make = meta.project_metadata.get("camera_make")
+    if make:
+        ifd0[piexif.ImageIFD.Make] = make.encode()
+    model = meta.project_metadata.get("camera_model")
+    if model:
+        ifd0[piexif.ImageIFD.Model] = model.encode()
+
+    exif_dict = {"0th": ifd0, "Exif": exif_ifd, "GPS": gps_ifd}
+    return piexif.dump(exif_dict)
 
 
 def _build_iptc(meta: FrameMetadata) -> bytes:
@@ -86,13 +129,52 @@ def _build_iptc(meta: FrameMetadata) -> bytes:
         DateCreated             — date portion of utc_timestamp
         TimeCreated             — time portion of utc_timestamp
 
+    Returns an empty bytes object if there are no IPTC fields to write.
+
     Args:
         meta: FrameMetadata supplying utc_timestamp and project_metadata.
 
     Returns:
-        Raw IPTC IIM bytes ready to embed at Pillow save time.
+        Raw IPTC IIM bytes wrapped in a Photoshop 3.0 APP13 container,
+        ready to inject into a JPEG APP13 segment.  Returns b'' if no
+        IPTC fields are present.
     """
-    pass
+    def iim_field(dataset: int, value: str) -> bytes:
+        data = value.encode("utf-8")
+        return b"\x1c\x02" + bytes([dataset]) + struct.pack(">H", len(data)) + data
+
+    iim = b""
+
+    # Date and time are always written if we have any IPTC content at all.
+    # We write them unconditionally alongside any project_metadata fields.
+    pm = meta.project_metadata
+
+    if "credit" in pm:
+        iim += iim_field(110, pm["credit"])
+    if "source" in pm:
+        iim += iim_field(115, pm["source"])
+    if "copyright" in pm:
+        iim += iim_field(116, pm["copyright"])
+    if "caption" in pm:
+        iim += iim_field(120, pm["caption"])
+
+    if not iim:
+        return b""
+
+    # Add date and time when we have other IPTC content
+    iim = (
+        iim_field(55, meta.utc_timestamp.strftime("%Y%m%d"))
+        + iim_field(60, meta.utc_timestamp.strftime("%H%M%S+0000"))
+        + iim
+    )
+
+    # Wrap in Photoshop 3.0 IRB container for APP13 embedding
+    irb_length = struct.pack(">I", len(iim))
+    irb = b"8BIM\x04\x04\x00\x00" + irb_length + iim
+    if len(iim) % 2:
+        irb += b"\x00"  # IRB data must be padded to even length
+
+    return b"Photoshop 3.0\x00" + irb
 
 
 def _build_xmp(
@@ -117,9 +199,38 @@ def _build_xmp(
         xmp_namespace_prefix: prefix used when writing custom namespace properties.
 
     Returns:
-        Serialised XMP packet bytes ready to embed at Pillow save time.
+        Serialised XMP packet bytes ready to embed in a JPEG APP1 segment.
     """
-    pass
+    create_date = meta.utc_timestamp.strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    p = xmp_namespace_prefix
+
+    lines = []
+    for key in _unrouted_sensor_keys(meta):
+        val = meta.sensor_snapshot[key]
+        lines.append(f"      <{p}:{key}>{val}</{p}:{key}>")
+    for key in _unrouted_project_keys(meta):
+        val = _xml_escape(meta.project_metadata[key])
+        lines.append(f"      <{p}:{key}>{val}</{p}:{key}>")
+
+    custom_block = "\n".join(lines)
+
+    xmp = (
+        '<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>\n'
+        '<x:xmpmeta xmlns:x="adobe:ns:meta/">\n'
+        '  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n'
+        '    <rdf:Description rdf:about=""\n'
+        '        xmlns:xmp="http://ns.adobe.com/xap/1.0/"\n'
+        f'        xmlns:{p}="{xmp_namespace_uri}">\n'
+        f"      <xmp:CreateDate>{create_date}</xmp:CreateDate>\n"
+        f"      <xmp:MetadataDate>{now}</xmp:MetadataDate>\n"
+        + (custom_block + "\n" if custom_block else "")
+        + "    </rdf:Description>\n"
+        "  </rdf:RDF>\n"
+        "</x:xmpmeta>\n"
+        '<?xpacket end="w"?>'
+    )
+    return xmp.encode("utf-8")
 
 
 def _unrouted_sensor_keys(meta: FrameMetadata) -> list[str]:
@@ -135,7 +246,7 @@ def _unrouted_sensor_keys(meta: FrameMetadata) -> list[str]:
         List of key strings present in sensor_snapshot but absent from
         FIELD_REGISTRY.
     """
-    pass
+    return [k for k in meta.sensor_snapshot if k not in FIELD_REGISTRY]
 
 
 def _unrouted_project_keys(meta: FrameMetadata) -> list[str]:
@@ -151,4 +262,15 @@ def _unrouted_project_keys(meta: FrameMetadata) -> list[str]:
         List of key strings present in project_metadata but absent from
         FIELD_REGISTRY.
     """
-    pass
+    return [k for k in meta.project_metadata if k not in FIELD_REGISTRY]
+
+
+def _xml_escape(value: str) -> str:
+    """Escape special characters for safe embedding in XML text content."""
+    return (
+        value
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )

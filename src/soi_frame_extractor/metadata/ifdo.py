@@ -46,6 +46,8 @@ iFDO fields written per image (where values are present in FrameMetadata):
     image-license           — from project_metadata license
 """
 
+import json
+import uuid
 from pathlib import Path
 
 from ..models.models import FrameMetadata
@@ -77,4 +79,79 @@ def write_ifdo_manifest(
     Raises:
         OSError: if the manifest file cannot be written.
     """
-    pass
+    written = sorted(written, key=lambda pair: pair[1].utc_timestamp)
+
+    # Build the image-set-header from the first frame's project_metadata.
+    # All frames in a run share the same project_metadata, so any frame works.
+    header: dict = {}
+    if written:
+        pm = written[0][1].project_metadata
+        if "cruise_id" in pm:
+            header["image-set-name"] = pm["cruise_id"]
+        if "project" in pm:
+            header["image-abstract"] = pm["project"]
+        if "license" in pm:
+            header["image-license"] = pm["license"]
+        if "vehicle" in pm:
+            header["image-platform"] = {"name": pm["vehicle"]}
+        pi: dict = {}
+        if "pi_name" in pm:
+            pi["name"] = pm["pi_name"]
+        if "pi_orcid" in pm:
+            pi["orcid"] = pm["pi_orcid"]
+        if pi:
+            header["image-pi"] = pi
+
+    # Build one entry per frame.
+    items: dict = {}
+    for path, meta in written:
+        entry: dict = {
+            "image-uuid": str(uuid.uuid4()),
+            "image-datetime": meta.utc_timestamp.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+        }
+
+        snap = meta.sensor_snapshot
+        if "latitude" in snap:
+            entry["image-latitude"] = snap["latitude"]
+        if "longitude" in snap:
+            entry["image-longitude"] = normalize_longitude(snap["longitude"])
+        if "depth" in snap:
+            entry["image-depth"] = snap["depth"]
+        if "altitude" in snap:
+            entry["image-altitude-meters"] = snap["altitude"]
+        if "heading" in snap:
+            entry["image-heading"] = snap["heading"]
+        if "pitch" in snap:
+            entry["image-pitch"] = snap["pitch"]
+        if "roll" in snap:
+            entry["image-roll"] = snap["roll"]
+
+        pm = meta.project_metadata
+        if "cruise_id" in pm:
+            entry["image-sequence-name"] = pm["cruise_id"]
+        if "dive_id" in pm:
+            entry["image-deployment-id"] = pm["dive_id"]
+        if "vehicle" in pm:
+            entry["image-platform"] = {"name": pm["vehicle"]}
+        pi = {}
+        if "pi_name" in pm:
+            pi["name"] = pm["pi_name"]
+        if "pi_orcid" in pm:
+            pi["orcid"] = pm["pi_orcid"]
+        if pi:
+            entry["image-pi"] = pi
+        if "project" in pm:
+            entry["image-abstract"] = pm["project"]
+        if "license" in pm:
+            entry["image-license"] = pm["license"]
+
+        items[path.name] = entry
+
+    manifest = {
+        "image-set-header": header,
+        "image-set-items": items,
+    }
+
+    manifest_path = output_dir / "ifdo.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return manifest_path
