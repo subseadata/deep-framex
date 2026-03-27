@@ -104,6 +104,7 @@ def write_frame(
         (Path, FrameMetadata) — path to the written file and its metadata.
 
     Raises:
+        ValueError: if filename extension is not a supported output format.
         OSError: if the file cannot be written.
     """
     meta = frame.metadata
@@ -117,16 +118,22 @@ def write_frame(
     img = Image.fromarray(frame.frame)
 
     suffix = path.suffix.lower()
-    if suffix in (".tif", ".tiff"):
-        # TIFF: embed EXIF only; IPTC/XMP in TIFF requires tiffinfo tag injection
-        # (tags 33723 and 700 respectively) — not yet implemented.
-        img.save(path, format="TIFF", exif=exif_bytes)
-    else:
+    if suffix in (".jpg", ".jpeg"):
         # JPEG: save with EXIF, then inject XMP and IPTC segments into the byte stream.
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=95, exif=exif_bytes)
         jpeg_data = _inject_jpeg_segments(buf.getvalue(), iptc_bytes, xmp_bytes)
         path.write_bytes(jpeg_data)
+    elif suffix in (".tif", ".tiff"):
+        # TIFF: embed EXIF only; IPTC/XMP in TIFF requires tiffinfo tag injection
+        # (tags 33723 and 700 respectively) — not yet implemented.
+        # TODO add tiffinfo tag injection
+        img.save(path, format="TIFF", exif=exif_bytes)
+    else:
+        raise ValueError(
+            f"Unsupported output extension {suffix or '(none)'} for {path.name}. "
+            "Use .jpg/.jpeg or .tif/.tiff in filename_template."
+        )
 
     return path, meta
 
