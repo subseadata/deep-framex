@@ -146,6 +146,11 @@ def run(
     try:
         # --- Stage 5: import sensor CSV ---
         sensor_keys: list[str] = []
+        if csv_path is not None and spec.mappings is None:
+            raise ValueError(
+                "A CSV file was provided (--data) but the spec has no 'mappings' block. "
+                "Add mappings (including 'timestamp') or omit --data."
+            )
         if csv_path is not None and spec.mappings is not None:
             dataset = import_csv(csv_path, conn, spec.mappings)
             sensor_keys = dataset.columns
