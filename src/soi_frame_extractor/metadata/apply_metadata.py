@@ -1,20 +1,28 @@
-"""Metadata writer
+"""Metadata builders for EXIF, IPTC, and XMP layers.
 
-Embeds FrameMetadata into an extracted image file using up to four metadata
-layers: EXIF, IPTC, XMP, and iFDO.
+Assembles per-image metadata for extracted frames.  Each build function
+returns metadata in the format expected by Pillow at save time, so all
+layers are embedded in a single file write — no post-hoc re-opening.
 
-Routing is governed by FIELD_REGISTRY for known canonical fields (utc_timestamp,
-latitude, longitude, depth, etc.).  Any sensor column or project_metadata key
-not present in FIELD_REGISTRY is written to XMP under a user-configurable
-custom namespace.  The namespace URI and prefix are taken from ExtractionSpec
-(xmp_namespace_uri, xmp_namespace_prefix) and default to
+    _build_exif(meta) → bytes   piexif-encoded EXIF block
+    _build_iptc(meta) → bytes   raw IPTC IIM block (APP13 Photoshop 3.0 wrapper)
+    _build_xmp(meta, ns_uri, ns_prefix) → bytes   serialised XMP packet
+
+iFDO is NOT handled here.  iFDO is a standalone JSON sidecar file written
+once per extraction run by metadata/ifdo.py — it is not embedded in image files.
+
+Routing is governed by FIELD_REGISTRY for known fields (latitude, longitude,
+depth, credit, source, copyright, caption, camera_make, camera_model).
+Any sensor column or project_metadata key not present in FIELD_REGISTRY is
+written to XMP under a user-configurable custom namespace.  The namespace
+URI and prefix are taken from ExtractionSpec (xmp_namespace_uri,
+xmp_namespace_prefix) and default to
 "https://soi-frame-extractor.org/xmp/v1/" / "sfe".
 
 Coordinate conventions:
     Input:   decimal degrees; longitude accepts both −180/+180 and 0–360.
     EXIF:    absolute DMS rational triples + Ref tags (N/S, E/W) — no negatives.
     XMP:     signed decimal degrees (−180/+180), negative = S or W.
-    iFDO:    signed decimal degrees (−180/+180), negative = S or W.
 
     Longitude normalisation (0–360 → −180/+180) is applied internally before
     any layer-specific conversion.
@@ -24,62 +32,25 @@ GPS altitude: depth sensor value written to GPSAltitude with GPSAltitudeRef=1
 
 UTC timestamp is written to DateTimeOriginal, GPSDateStamp, and GPSTimeStamp.
 
-iFDO nested objects (image-platform, image-pi) are assembled from individual
-project_metadata keys before serialisation.
-
-This module does not validate that the image format supports all four layers;
+This module does not validate that the image format supports all layers;
 callers should use JPEG or TIFF which support the full set.
 """
 
-from pathlib import Path
+import struct
+from datetime import datetime, timezone
 
-from ..models.models import FIELD_REGISTRY, ExtractedFrame, FrameMetadata
+import piexif
+
+from ..models.models import FIELD_REGISTRY, FrameMetadata
 from ..utils.coordinates import decimal_to_dms, decimal_to_ref, normalize_longitude
 
-_DEFAULT_XMP_NS_URI = "https://soi-frame-extractor.org/xmp/v1/"
-_DEFAULT_XMP_NS_PREFIX = "sfe"
-
-
-def apply_metadata(
-    path: Path,
-    frame: ExtractedFrame,
-    xmp_namespace_uri: str = _DEFAULT_XMP_NS_URI,
-    xmp_namespace_prefix: str = _DEFAULT_XMP_NS_PREFIX,
-) -> None:
-    """Embed FrameMetadata into the image file at path.
-
-    Reads the existing image file, writes metadata into all applicable
-    layers (EXIF, IPTC, XMP, iFDO), and saves the file in place.
-
-    Known fields are routed via FIELD_REGISTRY.  Sensor columns and
-    project_metadata keys absent from the registry go to XMP under the
-    provided custom namespace.  iFDO is serialised as a JSON block
-    embedded in XMP.
-
-    Args:
-        path:                 absolute path to the image file to annotate.
-        frame:                ExtractedFrame whose .metadata carries all values
-                              to embed.
-        xmp_namespace_uri:    URI for the custom XMP namespace used to store
-                              unrouted sensor and project fields.  Defaults to
-                              "https://soi-frame-extractor.org/xmp/v1/".
-        xmp_namespace_prefix: Prefix for the custom XMP namespace.
-                              Defaults to "sfe".
-
-    Raises:
-        FileNotFoundError: if path does not exist.
-        ValueError: if the image format cannot carry the required metadata.
-    """
-    pass
-
-
-def _write_exif(path: Path, meta: FrameMetadata) -> None:
-    """Write EXIF tags derived from FrameMetadata into the image at path.
+def _build_exif(meta: FrameMetadata) -> bytes:
+    """Build a piexif-encoded EXIF block from FrameMetadata.
 
     Longitude is normalised to −180/+180 before conversion.  All GPS values
     are passed as absolute magnitudes; hemisphere is encoded in Ref tags.
 
-    Tags written (where values are present):
+    Tags built (where values are present in meta):
         DateTimeOriginal        — from utc_timestamp
         GPSDateStamp            — date portion of utc_timestamp
         GPSTimeStamp            — time portion of utc_timestamp
@@ -93,19 +64,64 @@ def _write_exif(path: Path, meta: FrameMetadata) -> None:
         Model                   — from project_metadata camera_model
 
     Args:
-        path: path to the image file.
         meta: FrameMetadata supplying utc_timestamp, sensor_snapshot,
               and project_metadata.
+
+    Returns:
+        piexif-encoded bytes ready to pass to Pillow's exif parameter at save time.
     """
-    pass
+    ifd0: dict = {}
+    exif_ifd: dict = {}
+    gps_ifd: dict = {}
+
+    # Timestamp
+    dt_str = meta.utc_timestamp.strftime("%Y:%m:%d %H:%M:%S")
+    exif_ifd[piexif.ExifIFD.DateTimeOriginal] = dt_str.encode()
+    gps_ifd[piexif.GPSIFD.GPSDateStamp] = meta.utc_timestamp.strftime("%Y:%m:%d").encode()
+    h = meta.utc_timestamp.hour
+    m = meta.utc_timestamp.minute
+    s = meta.utc_timestamp.second
+    gps_ifd[piexif.GPSIFD.GPSTimeStamp] = [(h, 1), (m, 1), (s, 1)]
+
+    # GPS latitude
+    lat = meta.sensor_snapshot.get("latitude")
+    if lat is not None:
+        gps_ifd[piexif.GPSIFD.GPSLatitude] = decimal_to_dms(abs(lat))
+        gps_ifd[piexif.GPSIFD.GPSLatitudeRef] = decimal_to_ref(lat, "lat").encode()
+
+    # GPS longitude (normalise 0–360 → −180/+180 first)
+    lon = meta.sensor_snapshot.get("longitude")
+    if lon is not None:
+        lon = normalize_longitude(lon)
+        gps_ifd[piexif.GPSIFD.GPSLongitude] = decimal_to_dms(abs(lon))
+        gps_ifd[piexif.GPSIFD.GPSLongitudeRef] = decimal_to_ref(lon, "lon").encode()
+
+    # GPS altitude — depth as positive magnitude, tagged below sea level
+    depth = meta.sensor_snapshot.get("depth")
+    if depth is not None:
+        depth_abs = abs(depth)
+        depth_int = round(depth_abs * 100)
+        gps_ifd[piexif.GPSIFD.GPSAltitude] = (depth_int, 100)
+        gps_ifd[piexif.GPSIFD.GPSAltitudeRef] = b"\x01"
+
+    # Camera make / model from project metadata
+    make = meta.project_metadata.get("camera_make")
+    if make:
+        ifd0[piexif.ImageIFD.Make] = make.encode()
+    model = meta.project_metadata.get("camera_model")
+    if model:
+        ifd0[piexif.ImageIFD.Model] = model.encode()
+
+    exif_dict = {"0th": ifd0, "Exif": exif_ifd, "GPS": gps_ifd}
+    return piexif.dump(exif_dict)
 
 
-def _write_iptc(path: Path, meta: FrameMetadata) -> None:
-    """Write IPTC IIM fields derived from project_metadata into the image.
+def _build_iptc(meta: FrameMetadata) -> bytes:
+    """Build a raw IPTC IIM block from FrameMetadata.
 
     GPS coordinates are NOT written to IPTC — IIM Record 2 has no GPS fields.
 
-    Fields written (where values are present in project_metadata):
+    Fields built (where values are present in project_metadata):
         Credit                  — credit
         Source                  — source
         CopyrightNotice         — copyright
@@ -113,70 +129,108 @@ def _write_iptc(path: Path, meta: FrameMetadata) -> None:
         DateCreated             — date portion of utc_timestamp
         TimeCreated             — time portion of utc_timestamp
 
+    Returns an empty bytes object if there are no IPTC fields to write.
+
     Args:
-        path: path to the image file.
         meta: FrameMetadata supplying utc_timestamp and project_metadata.
+
+    Returns:
+        Raw IPTC IIM bytes wrapped in a Photoshop 3.0 APP13 container,
+        ready to inject into a JPEG APP13 segment.  Returns b'' if no
+        IPTC fields are present.
     """
-    pass
+    def iim_field(dataset: int, value: str) -> bytes:
+        data = value.encode("utf-8")
+        return b"\x1c\x02" + bytes([dataset]) + struct.pack(">H", len(data)) + data
+
+    iim = b""
+
+    # Date and time are always written if we have any IPTC content at all.
+    # We write them unconditionally alongside any project_metadata fields.
+    pm = meta.project_metadata
+
+    if "credit" in pm:
+        iim += iim_field(110, pm["credit"])
+    if "source" in pm:
+        iim += iim_field(115, pm["source"])
+    if "copyright" in pm:
+        iim += iim_field(116, pm["copyright"])
+    if "caption" in pm:
+        iim += iim_field(120, pm["caption"])
+
+    if not iim:
+        return b""
+
+    # Add date and time when we have other IPTC content
+    iim = (
+        iim_field(55, meta.utc_timestamp.strftime("%Y%m%d"))
+        + iim_field(60, meta.utc_timestamp.strftime("%H%M%S+0000"))
+        + iim
+    )
+
+    # Wrap in Photoshop 3.0 IRB container for APP13 embedding
+    irb_length = struct.pack(">I", len(iim))
+    irb = b"8BIM\x04\x04\x00\x00" + irb_length + iim
+    if len(iim) % 2:
+        irb += b"\x00"  # IRB data must be padded to even length
+
+    return b"Photoshop 3.0\x00" + irb
 
 
-def _write_xmp(
-    path: Path,
+def _build_xmp(
     meta: FrameMetadata,
     xmp_namespace_uri: str,
     xmp_namespace_prefix: str,
-) -> None:
-    """Write XMP properties derived from FrameMetadata into the image.
+) -> bytes:
+    """Build a serialised XMP packet from FrameMetadata.
 
-    Standard XMP properties written:
+    Standard XMP properties built:
         xmp:CreateDate          — from utc_timestamp (ISO 8601)
         xmp:MetadataDate        — current wall-clock time (ISO 8601)
 
-    Custom namespace properties written (URI and prefix supplied by caller):
+    Custom namespace properties (URI and prefix supplied by caller):
         All keys in sensor_snapshot not routed elsewhere by FIELD_REGISTRY.
         All keys in project_metadata not routed elsewhere by FIELD_REGISTRY.
 
     Args:
-        path:                 path to the image file.
         meta:                 FrameMetadata supplying utc_timestamp,
                               sensor_snapshot, and project_metadata.
         xmp_namespace_uri:    URI registered for the custom namespace.
         xmp_namespace_prefix: prefix used when writing custom namespace properties.
+
+    Returns:
+        Serialised XMP packet bytes ready to embed in a JPEG APP1 segment.
     """
-    pass
+    create_date = meta.utc_timestamp.strftime("%Y-%m-%dT%H:%M:%SZ")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    p = xmp_namespace_prefix
 
+    lines = []
+    for key in _unrouted_sensor_keys(meta):
+        val = meta.sensor_snapshot[key]
+        lines.append(f"      <{p}:{key}>{val}</{p}:{key}>")
+    for key in _unrouted_project_keys(meta):
+        val = _xml_escape(meta.project_metadata[key])
+        lines.append(f"      <{p}:{key}>{val}</{p}:{key}>")
 
-def _write_ifdo(path: Path, meta: FrameMetadata) -> None:
-    """Write iFDO v2.1.0 fields derived from FrameMetadata into the image.
+    custom_block = "\n".join(lines)
 
-    Longitude is normalised to −180/+180 before writing.  iFDO stores
-    coordinates as signed decimal degrees (negative = S or W).
-
-    iFDO data is serialised as a JSON object and embedded in XMP under the
-    iFDO namespace.  Fields written (where values are present):
-
-        image-uuid              — generated at write time (UUID4)
-        image-datetime          — utc_timestamp as ISO 8601
-        image-latitude          — signed decimal degrees from sensor_snapshot
-        image-longitude         — signed decimal degrees (normalised to −180/+180)
-        image-depth             — from sensor_snapshot depth
-        image-altitude-meters   — from sensor_snapshot altitude if present
-        image-heading           — from sensor_snapshot heading if present
-        image-pitch             — from sensor_snapshot pitch if present
-        image-roll              — from sensor_snapshot roll if present
-        image-sequence-name     — from project_metadata cruise_id
-        image-deployment-id     — from project_metadata dive_id
-        image-platform          — nested object: {name: project_metadata vehicle}
-        image-pi                — nested object: {name: pi_name, orcid: pi_orcid}
-        image-abstract          — from project_metadata project
-        image-license           — from project_metadata license
-
-    Args:
-        path: path to the image file.
-        meta: FrameMetadata supplying utc_timestamp, sensor_snapshot,
-              and project_metadata.
-    """
-    pass
+    xmp = (
+        '<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>\n'
+        '<x:xmpmeta xmlns:x="adobe:ns:meta/">\n'
+        '  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n'
+        '    <rdf:Description rdf:about=""\n'
+        '        xmlns:xmp="http://ns.adobe.com/xap/1.0/"\n'
+        f'        xmlns:{p}="{xmp_namespace_uri}">\n'
+        f"      <xmp:CreateDate>{create_date}</xmp:CreateDate>\n"
+        f"      <xmp:MetadataDate>{now}</xmp:MetadataDate>\n"
+        + (custom_block + "\n" if custom_block else "")
+        + "    </rdf:Description>\n"
+        "  </rdf:RDF>\n"
+        "</x:xmpmeta>\n"
+        '<?xpacket end="w"?>'
+    )
+    return xmp.encode("utf-8")
 
 
 def _unrouted_sensor_keys(meta: FrameMetadata) -> list[str]:
@@ -192,7 +246,7 @@ def _unrouted_sensor_keys(meta: FrameMetadata) -> list[str]:
         List of key strings present in sensor_snapshot but absent from
         FIELD_REGISTRY.
     """
-    pass
+    return [k for k in meta.sensor_snapshot if k not in FIELD_REGISTRY]
 
 
 def _unrouted_project_keys(meta: FrameMetadata) -> list[str]:
@@ -208,4 +262,15 @@ def _unrouted_project_keys(meta: FrameMetadata) -> list[str]:
         List of key strings present in project_metadata but absent from
         FIELD_REGISTRY.
     """
-    pass
+    return [k for k in meta.project_metadata if k not in FIELD_REGISTRY]
+
+
+def _xml_escape(value: str) -> str:
+    """Escape special characters for safe embedding in XML text content."""
+    return (
+        value
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )

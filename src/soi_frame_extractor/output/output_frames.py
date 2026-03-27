@@ -42,15 +42,22 @@ Template validation:
     sensor value is absent for a specific timestamp (a data gap, not a config
     error).  This per-frame fallback is silent.
 
-The output directory is created if it does not exist.  If two frames produce
-the same filename after rendering, a zero-padded counter suffix is appended
-before the extension to make each name unique.
+The output directory is created if it does not exist.  No collision detection
+is performed — include {utc} in the template (strongly recommended) since the
+planner guarantees unique timestamps.  Templates that omit {utc} may produce
+collisions if sensor values repeat across frames.
 """
 
+import difflib
+import io
+import struct
 import sys
 from pathlib import Path
 
-from ..models.models import ExtractedFrame
+from PIL import Image
+
+from ..metadata.apply_metadata import _build_exif, _build_iptc, _build_xmp
+from ..models.models import ExtractedFrame, FrameMetadata
 
 _DEFAULT_TEMPLATE = "{utc}_{video_stem}.jpg"
 
@@ -58,47 +65,117 @@ _DEFAULT_TEMPLATE = "{utc}_{video_stem}.jpg"
 _BUILTIN_KEYS = {"utc", "video_stem", "offset_s"}
 
 
+def write_frame(
+    frame: ExtractedFrame,
+    output_dir: Path,
+    filename_template: str | None,
+    xmp_namespace_uri: str,
+    xmp_namespace_prefix: str,
+) -> tuple[Path, FrameMetadata]:
+    """Write a single frame to disk with all metadata embedded in one save.
+
+    Renders a filename, builds EXIF, IPTC, and XMP blocks via the metadata
+    builders in apply_metadata, then saves the image once via Pillow with
+    all metadata included.  output_dir must already exist.
+
+    Returns the path and metadata only — the pixel data is written to disk and
+    can be discarded.  The returned FrameMetadata is sufficient for the caller
+    to build an iFDO manifest without holding pixel arrays in memory.
+
+    No collision detection is performed.  Include {utc} in the template
+    (strongly recommended) — the planner guarantees unique timestamps, so {utc}
+    guarantees unique filenames.  Templates that omit {utc} may produce
+    collisions if sensor values repeat across frames.
+
+    NOTE for cloud output: this function writes to a local output_dir.  For
+    writing directly to S3 or GCS, replace the Pillow save call with an
+    upload to the target bucket.  The rest of the function (filename rendering,
+    metadata building) is storage-agnostic.
+
+    Args:
+        frame:                ExtractedFrame to write.
+        output_dir:           directory to write the image file into.  Must exist.
+        filename_template:    Python format string (see module docstring), or
+                              None to use the default pattern.
+        xmp_namespace_uri:    URI for the custom XMP namespace.
+        xmp_namespace_prefix: prefix for the custom XMP namespace.
+
+    Returns:
+        (Path, FrameMetadata) — path to the written file and its metadata.
+
+    Raises:
+        ValueError: if filename extension is not a supported output format.
+        OSError: if the file cannot be written.
+    """
+    meta = frame.metadata
+    filename = _render_filename(frame, filename_template)
+    path = output_dir / filename
+
+    exif_bytes = _build_exif(meta)
+    iptc_bytes = _build_iptc(meta)
+    xmp_bytes = _build_xmp(meta, xmp_namespace_uri, xmp_namespace_prefix)
+
+    img = Image.fromarray(frame.frame)
+
+    suffix = path.suffix.lower()
+    if suffix in (".jpg", ".jpeg"):
+        # JPEG: save with EXIF, then inject XMP and IPTC segments into the byte stream.
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=95, exif=exif_bytes)
+        jpeg_data = _inject_jpeg_segments(buf.getvalue(), iptc_bytes, xmp_bytes)
+        path.write_bytes(jpeg_data)
+    elif suffix in (".tif", ".tiff"):
+        # TIFF: embed EXIF only; IPTC/XMP in TIFF requires tiffinfo tag injection
+        # (tags 33723 and 700 respectively) — not yet implemented.
+        # TODO add tiffinfo tag injection
+        img.save(path, format="TIFF", exif=exif_bytes)
+    else:
+        raise ValueError(
+            f"Unsupported output extension {suffix or '(none)'} for {path.name}. "
+            "Use .jpg/.jpeg or .tif/.tiff in filename_template."
+        )
+
+    return path, meta
+
+
 def output_frames(
     frames: list[ExtractedFrame],
     output_dir: Path,
     filename_template: str | None = None,
-) -> list[tuple[Path, ExtractedFrame]]:
-    """Write extracted frames to disk and return paths paired with their frames.
+    xmp_namespace_uri: str = "https://soi-frame-extractor.org/xmp/v1/",
+    xmp_namespace_prefix: str = "sfe",
+) -> list[tuple[Path, FrameMetadata]]:
+    """Write a list of extracted frames to disk and return paths with metadata.
 
-    Creates output_dir if it does not exist.  Renders a filename for each
-    frame from filename_template (or the default if absent/broken), resolves
-    collisions, writes the image, and returns (path, frame) pairs ready to
-    pass to apply_metadata.
+    Creates output_dir if it does not exist.  Delegates each write to
+    write_frame, which embeds all metadata (EXIF, IPTC, XMP) in a single
+    Pillow save per frame.
+
+    Returns (Path, FrameMetadata) pairs — pixel data is written and discarded.
+    The returned list is sufficient for building an iFDO manifest.
+
+    No collision detection is performed.  Include {utc} in the filename
+    template to guarantee unique filenames — see write_frame for details.
 
     Args:
-        frames:            list of ExtractedFrame objects to write.
-        output_dir:        directory to write image files into.
-        filename_template: Python format string (see module docstring).
-                           If None, the default pattern is used.
+        frames:               list of ExtractedFrame objects to write.
+        output_dir:           directory to write image files into.
+        filename_template:    Python format string (see module docstring).
+                              If None, the default pattern is used.
+        xmp_namespace_uri:    URI for the custom XMP namespace.
+        xmp_namespace_prefix: prefix for the custom XMP namespace.
 
     Returns:
-        List of (Path, ExtractedFrame) pairs in input order.
+        List of (Path, FrameMetadata) pairs in input order.
 
     Raises:
         OSError: if output_dir cannot be created or a file cannot be written.
     """
-    # create output_dir (and any parents) if it does not exist
-    #
-    # seen: dict[str, int] mapping filename → collision counter
-    #
-    # results = []
-    # for each frame in frames:
-    #   filename = _render_filename(frame, filename_template)
-    #   if filename already in seen:
-    #     insert counter suffix before extension until unique
-    #     e.g. "foo.jpg" → "foo_001.jpg"
-    #   mark filename as seen
-    #   path = output_dir / filename
-    #   write frame.frame (NDArray H×W×3 uint8 RGB) to path
-    #   append (path, frame) to results
-    #
-    # return results
-    pass
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return [
+        write_frame(frame, output_dir, filename_template, xmp_namespace_uri, xmp_namespace_prefix)
+        for frame in frames
+    ]
 
 
 def validate_filename_template(
@@ -129,23 +206,21 @@ def validate_filename_template(
         ValueError: if the template string is syntactically invalid as a
                     Python format string.
     """
-    # build dummy context: _BUILTIN_KEYS + sensor_keys + metadata_keys
-    # all values are placeholder strings (e.g. "0" or the key name itself)
-    #
-    # try:
-    #   template.format_map(dummy_context)
-    # except KeyError as e:
-    #   bad_key = e.args[0]
-    #   all_keys = set(dummy_context.keys())
-    #   suggestions = difflib.get_close_matches(bad_key, all_keys, n=1)
-    #   hint = f" (did you mean '{suggestions[0]}'?)" if suggestions else ""
-    #   raise ValueError(
-    #       f"filename_template references unknown key '{bad_key}'{hint}.\n"
-    #       f"Available keys: {sorted(all_keys)}"
-    #   )
-    # except (ValueError, IndexError) as e:
-    #   raise ValueError(f"filename_template is not a valid format string: {e}")
-    pass
+    all_keys = _BUILTIN_KEYS | set(sensor_keys) | set(metadata_keys)
+    dummy = {k: "0" for k in all_keys}
+
+    try:
+        template.format_map(dummy)
+    except KeyError as e:
+        bad_key = e.args[0]
+        suggestions = difflib.get_close_matches(bad_key, sorted(all_keys), n=1)
+        hint = f" (did you mean '{suggestions[0]}'?)" if suggestions else ""
+        raise ValueError(
+            f"filename_template references unknown key '{bad_key}'{hint}.\n"
+            f"Available keys: {sorted(all_keys)}"
+        ) from None
+    except (ValueError, IndexError) as e:
+        raise ValueError(f"filename_template is not a valid format string: {e}") from e
 
 
 def _render_filename(frame: ExtractedFrame, template: str | None) -> str:
@@ -173,17 +248,63 @@ def _render_filename(frame: ExtractedFrame, template: str | None) -> str:
     Returns:
         Rendered filename string including extension.
     """
-    # build context dict:
-    #   start with sensor_snapshot (float values)
-    #   update with project_metadata (str values; wins on collision)
-    #   add utc, video_stem, offset_s
-    #
-    # effective_template = template if template is not None else _DEFAULT_TEMPLATE
-    #
-    # try:
-    #   return effective_template.format_map(context)
-    # except (KeyError, ValueError, IndexError):
-    #   if template is not None (i.e. user supplied it):
-    #     warn to stderr: "filename_template could not be rendered; using default"
-    #   return _DEFAULT_TEMPLATE.format_map(context)
-    pass
+    meta = frame.metadata
+    context: dict = {}
+    context.update(meta.sensor_snapshot)
+    context.update(meta.project_metadata)
+    context["utc"] = meta.utc_timestamp.strftime("%Y%m%dT%H%M%S%f")
+    context["video_stem"] = meta.video_path.stem
+    context["offset_s"] = meta.offset_s
+
+    effective = template if template is not None else _DEFAULT_TEMPLATE
+
+    try:
+        return effective.format_map(context)
+    except (KeyError, ValueError, IndexError):
+        if template is not None:
+            print(
+                f"Warning: filename_template could not be rendered for frame at "
+                f"{meta.utc_timestamp.isoformat()}; using default.",
+                file=sys.stderr,
+            )
+        return _DEFAULT_TEMPLATE.format_map(context)
+
+
+def _inject_jpeg_segments(jpeg_bytes: bytes, iptc_bytes: bytes, xmp_bytes: bytes) -> bytes:
+    """Inject IPTC (APP13) and XMP (APP1) segments into a JPEG byte stream.
+
+    Scans past any existing APP markers (0xE0–0xEF) written by Pillow and
+    inserts the new segments right after them, before the image data.  This
+    gives the expected ordering: EXIF APP1 → XMP APP1 → IPTC APP13 → image.
+
+    Args:
+        jpeg_bytes: raw JPEG bytes as returned by Pillow save.
+        iptc_bytes: IPTC IIM bytes in Photoshop 3.0 wrapper, or b''.
+        xmp_bytes:  serialised XMP packet bytes, or b''.
+
+    Returns:
+        JPEG bytes with the new segments injected.
+    """
+    # Find insertion point: right after all existing APP segments (0xE0–0xEF).
+    # Those segments have the structure: FF Ex [2-byte length including itself] [data].
+    pos = 2  # skip SOI (FF D8)
+    while pos + 3 < len(jpeg_bytes):
+        if jpeg_bytes[pos] != 0xFF:
+            break
+        marker = jpeg_bytes[pos + 1]
+        if 0xE0 <= marker <= 0xEF:
+            seg_length = struct.unpack(">H", jpeg_bytes[pos + 2 : pos + 4])[0]
+            pos += 2 + seg_length
+        else:
+            break
+
+    segments = b""
+    if xmp_bytes:
+        xmp_data = b"http://ns.adobe.com/xap/1.0/\x00" + xmp_bytes
+        segments += b"\xff\xe1" + struct.pack(">H", len(xmp_data) + 2) + xmp_data
+    if iptc_bytes:
+        segments += b"\xff\xed" + struct.pack(">H", len(iptc_bytes) + 2) + iptc_bytes
+
+    if not segments:
+        return jpeg_bytes
+    return jpeg_bytes[:pos] + segments + jpeg_bytes[pos:]

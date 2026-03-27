@@ -19,5 +19,4 @@ def create_video_session(video_files: list[VideoFile]) -> VideoSession:
     Returns:
         VideoSession with videos sorted by utc_start
     """
-    # sort video_files by utc_start and return as a VideoSession
-    pass
+    return VideoSession(videos=sorted(video_files, key=lambda vf: vf.utc_start))

@@ -12,6 +12,7 @@ duration is read from the container's format duration field (seconds as float).
 """
 
 import av
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from ..models.models import Video, VideoFile
@@ -29,16 +30,19 @@ def open_video(video_file: VideoFile) -> Video:
     Raises:
         FileNotFoundError: if video_file.path does not exist.
     """
-    pass
+    if not video_file.path.exists():
+        raise FileNotFoundError(f"Video file not found: {video_file.path}")
+    container = av.open(str(video_file.path))
+    return Video(file=video_file, container=container)
 
 
 def probe_video(path: Path) -> VideoFile:
     """Probe a video file and return a fully populated VideoFile.
 
     Reads container metadata via PyAV without opening a full decode context.
-    utc_start is sourced from format.tags.creation_time, with a fallback to
-    the video stream's creation_time tag.  duration comes from the container
-    format duration.
+    utc_start is sourced from container.metadata['creation_time'], with a
+    fallback to the first video stream's creation_time tag.  duration comes
+    from container.duration (microseconds).
 
     Args:
         path: path to the video file.
@@ -48,22 +52,41 @@ def probe_video(path: Path) -> VideoFile:
 
     Raises:
         FileNotFoundError: if path does not exist.
-        ValueError: if creation_time is absent from both format and video
-                    stream tags, or if the duration cannot be determined.
-        ValueError: if the creation_time string is not a valid ISO 8601 UTC
-                    datetime.
+        ValueError: if creation_time is absent from both container and video
+                    stream tags, or if the datetime is not UTC-aware.
+        ValueError: if duration cannot be determined.
     """
     # TODO: add fallback for files without creation_time in container metadata —
     #       options include parsing UTC from filename patterns or accepting a
     #       user-supplied file→start-time mapping (e.g. two-column CSV).
 
-    # open container with av.open(path, metadata_errors='ignore')
-    # read utc_start:
-    #   try format.metadata.get('creation_time')
-    #   else try first video stream metadata.get('creation_time')
-    #   raise ValueError if neither is present
-    #   parse with datetime.fromisoformat; raise ValueError if naive
-    # read duration from container.duration (microseconds as int) → timedelta
-    #   raise ValueError if duration is None or <= 0
-    # return VideoFile(path=path, utc_start=utc_start, duration=duration)
-    pass
+    if not path.exists():
+        raise FileNotFoundError(f"Video file not found: {path}")
+
+    with av.open(str(path), metadata_errors="ignore") as container:
+        creation_time_str = container.metadata.get("creation_time")
+
+        if creation_time_str is None:
+            for stream in container.streams.video:
+                creation_time_str = stream.metadata.get("creation_time")
+                if creation_time_str:
+                    break
+
+        if creation_time_str is None:
+            raise ValueError(
+                f"No creation_time tag found in {path}. "
+                "Re-encode with '-metadata creation_time=...' or supply a start-time mapping."
+            )
+
+        utc_start = datetime.fromisoformat(creation_time_str)
+        if utc_start.tzinfo is None:
+            raise ValueError(
+                f"creation_time in {path} is not UTC-aware: {creation_time_str!r}"
+            )
+
+        duration_us = container.duration
+        if not duration_us:
+            raise ValueError(f"Could not determine duration for {path}")
+        duration = timedelta(microseconds=duration_us)
+
+    return VideoFile(path=path, utc_start=utc_start, duration=duration)
