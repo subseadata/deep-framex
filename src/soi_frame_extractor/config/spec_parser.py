@@ -207,6 +207,25 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
             f"'max_workers' must be at least 1, got {max_workers}"
         )
 
+    # stream_output — top-level, must be boolean
+    raw_stream_output = raw.get('stream_output', False)
+    if isinstance(raw_stream_output, bool):
+        stream_output = raw_stream_output
+    elif isinstance(raw_stream_output, str):
+        lowered = raw_stream_output.strip().lower()
+        if lowered == 'true':
+            stream_output = True
+        elif lowered == 'false':
+            stream_output = False
+        else:
+            raise ValueError(
+                f"'stream_output' must be boolean true/false, got {raw_stream_output!r}"
+            )
+    else:
+        raise ValueError(
+            f"'stream_output' must be boolean true/false, got {raw_stream_output!r}"
+        )
+
     # optional top-level fields — only pass XMP overrides if explicitly set,
     # so the model defaults apply when the user omits them
     kwargs: dict = {}
@@ -222,7 +241,7 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
         filename_template=raw.get('filename_template'),
         initial_offset_s=initial_offset_s,
         interpolation_window=interpolation_window,
-        stream_output=bool(raw.get('stream_output', False)),
+        stream_output=stream_output,
         max_workers=max_workers,
         **kwargs,
     )
