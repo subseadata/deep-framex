@@ -299,7 +299,7 @@ def _intersect_windows(
         for wb in b:
             start = max(wa.start, wb.start)
             end = min(wa.end, wb.end)
-            if start < end:
+            if start <= end:
                 result.append(TimePeriod(start=start, end=end))
     return sorted(result, key=lambda w: w.start)
 
