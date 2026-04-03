@@ -40,7 +40,7 @@ def test_interpolate_before_data_warns(conn):
     assert "depth" in result
 
 # extrapolate after data should return nearest value and issue a UserWarning.
-def test_interpolate_before_data_warns(conn):
+def test_interpolate_after_data_warns(conn):
     with pytest.warns(UserWarning):
         result = _interpolate_sensor(1748772050.0, ["depth"], conn)
     assert "depth" in result
