@@ -18,11 +18,11 @@ def conn():
 # Fixture: minimal valid CSV written to tmp_path.
 @pytest.fixture
 def csv_path(tmp_path):
-  p = tmp_path / "sensor.csv"
-  p.write_text("Timestamp,Depth_m,Temp_C\n"
+    p = tmp_path / "sensor.csv"
+    p.write_text("Timestamp,Depth_m,Temp_C\n"
                "2025-10-15T10:00:00Z,371.2,2.0\n"
                "2025-10-15T10:00:30Z,372.5,1.9\n")
-  return p
+    return p
 
 
 # Correct row count, columns, and UTC time range returned.
