@@ -45,7 +45,7 @@ def test_interpolate_before_data_warns(conn):
         result = _interpolate_sensor(1748772050.0, ["depth"], conn)
     assert "depth" in result
 
-# Empty DB — no rows at all, should return empty dict.
+# Empty DB should return empty dict.
 def test_interpolate_empty_db():
     c = create_session_db()
     c.execute("CREATE TABLE sensor_readings (timestamp REAL PRIMARY KEY, depth REAL NOT NULL)")
