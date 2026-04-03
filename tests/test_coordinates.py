@@ -7,7 +7,6 @@ def test_normalize_longitude():
     assert normalize_longitude(200.0) == -160.0
 
 def test_decimal_to_ref():
-
     assert decimal_to_ref(50.0, "lat") == "N"
     assert decimal_to_ref(-30.0, "lat") == "S"
     assert decimal_to_ref(20.0, "lon") == "E"
