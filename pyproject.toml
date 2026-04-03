@@ -16,6 +16,9 @@ dependencies = [
 [project.scripts]
 soi-extract = "soi_frame_extractor.cli:main"
 
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

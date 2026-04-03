@@ -166,4 +166,7 @@ def _parse_timestamp(value: str) -> float:
     dt = datetime.fromisoformat(value)
     if dt.tzinfo is None:
         raise ValueError(f"Timestamp is not UTC-aware: {value!r}")
+    # TODO: warn if tzinfo is not UTC — non-UTC timezones are accepted and converted
+    # correctly, but users may not realise their data is being shifted. A UserWarning
+    # here would help catch accidental local-time submissions.
     return dt.timestamp()
