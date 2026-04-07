@@ -8,7 +8,7 @@ Install from source:
 
 **uv:**
 ```
-uv pip install git+http://github.com/schmidtocean/soi-frame-extractor
+uv pip install git+https://github.com/schmidtocean/soi-frame-extractor
 ```
 
 **Pip:**
