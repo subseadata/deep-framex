@@ -6,6 +6,12 @@ Frame extraction library for deep sea video.  Frames are self-describing — met
 
 Install from source:
 
+**uv:**
+```
+uv pip install git+http://github.com/schmidtocean/soi-frame-extractor
+```
+
+**Pip:**
 ```
 git clone <repo>
 cd soiFrameExtractor
