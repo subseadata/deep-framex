@@ -150,7 +150,7 @@ class VideoExtractionPlan(CustomBaseModel):
     video_file: VideoFile
     frames: list[FrameSpec]             # planned frames in ascending offset order
     project_metadata: dict[str, str] = {}  # passed through to every frame's metadata
-    # NOTE: video_file.path must be resolvable on whatever machine runs extract_frames.
+    # NOTE: video_file.path must be resolvable on whatever machine runs decode_frames.
     # For distributed workers this means a shared filesystem, pre-staged local copy,
     # or (future) a URL string — see open_video in video_reader.py.
 

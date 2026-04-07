@@ -6,6 +6,12 @@ Frame extraction library for deep sea video.  Frames are self-describing — met
 
 Install from source:
 
+**uv:**
+```
+uv pip install git+https://github.com/schmidtocean/soi-frame-extractor
+```
+
+**Pip:**
 ```
 git clone <repo>
 cd soiFrameExtractor
@@ -172,7 +178,7 @@ Each pipeline stage is a standalone function.  You can call any stage independen
 from soi_frame_extractor.config.spec_parser import spec_from_file
 from soi_frame_extractor.config.video_discovery import discover_videos
 from soi_frame_extractor.extraction.video_session import create_video_session
-from soi_frame_extractor.extraction.frame_extractor import extract_frames
+from soi_frame_extractor.extraction.frame_extractor import decode_frames
 from soi_frame_extractor.planning.planner import plan
 from soi_frame_extractor.db.session_db import create_session_db, close_session_db
 from soi_frame_extractor.data.importer import import_csv
@@ -196,7 +202,7 @@ for p in plans:
 **Extraction without writing** — get raw frames as NumPy arrays:
 
 ```python
-for frame in extract_frames(video_plan):
+for frame in decode_frames(video_plan):
     # frame.frame is (H, W, 3) uint8 RGB
     # frame.metadata holds utc_timestamp, sensor values, project metadata
     process(frame.frame)
@@ -211,6 +217,57 @@ path, meta = write_frame(frame, output_dir, filename_template=None,
                          xmp_namespace_uri="https://example.org/",
                          xmp_namespace_prefix="myns")
 ```
+
+## Generating BIIGLE metadata from existing images
+
+If you already have a set of extracted images and just need a BIIGLE-compatible metadata CSV — without re-extracting from video — use the standalone assembler.  No video files or pixel data are required.
+
+You need a list of `(filename, utc_datetime)` pairs.  There are two helpers depending on how your filenames are structured:
+
+**Filenames produced by this tool** — parse the timestamp directly out of the filename using the same template string:
+
+```python
+from pathlib import Path
+from soi_frame_extractor.utils.timestamps import parse_filename_template
+
+files = [
+    (p.name, parse_filename_template(p, "{dive_id}_{utc}"))
+    for p in sorted(Path("frames/").glob("*.jpg"))
+]
+```
+
+**Generic filenames with a separate CSV** — read a CSV that maps filenames to timestamps:
+
+```python
+from soi_frame_extractor.utils.timestamps import parse_file_list_csv
+
+# file_list.csv columns: filename, timestamp
+files = parse_file_list_csv(Path("file_list.csv"))
+```
+
+Then assemble and write:
+
+```python
+from soi_frame_extractor.metadata.assemble import assemble_biigle_records
+from soi_frame_extractor.metadata.biigle import write_biigle_manifest
+from soi_frame_extractor.models.models import ColumnMappings
+
+records = assemble_biigle_records(
+    files=files,
+    csv_path=Path("sensors.csv"),       # omit if no sensor data
+    mappings=ColumnMappings(
+        timestamp="Timestamp",
+        latitude="Lat_ddeg",
+        longitude="Lon_ddeg",
+        depth="Depth_m",
+    ),
+    project_metadata={"cruise_id": "FK250101", "dive_id": "S0042"},
+)
+
+write_biigle_manifest(records, Path("output/"))
+```
+
+`assemble_biigle_records` interpolates sensor values at each image's timestamp using the same median-based interpolation as the extraction pipeline.  The sensor CSV need not align exactly with frame timestamps.
 
 ## Structure
 

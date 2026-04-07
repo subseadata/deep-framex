@@ -16,13 +16,13 @@ import argparse
 import sys
 from pathlib import Path
 
-from .pipeline import run
+from .pipeline import extract
 
 
 def cmd_extract(args: argparse.Namespace) -> int:
     """Run the full extraction pipeline from parsed CLI arguments.
 
-    Delegates entirely to pipeline.run().  Catches known error types,
+    Delegates entirely to pipeline.extract().  Catches known error types,
     logs them to stderr, and returns a non-zero exit code.
 
     Args:
@@ -45,7 +45,7 @@ def cmd_extract(args: argparse.Namespace) -> int:
         video_source = source_paths
 
     try:
-        run(
+        extract(
             spec_path=Path(args.spec),
             video_source=video_source,
             output_dir=Path(args.output),
