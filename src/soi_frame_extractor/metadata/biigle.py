@@ -100,18 +100,12 @@ def write_biigle_manifest(
     # Build all rows first to determine which columns are actually used
     rows = [_build_biigle_row(path, meta) for path, meta in written]
 
-    # Determine which optional columns are present in any row
-    all_keys = {"filename", "taken_at", "lat", "lng", "gps_altitude",
-                "distance_to_ground", "yaw"}
-
-    # Start with required columns
-    fieldnames = ["filename", "taken_at"]
-
-    # Add optional columns if present in any row
-    for row in rows:
-        for key in row.keys():
-            if key not in fieldnames and key in all_keys:
-                fieldnames.append(key)
+    # Build fieldnames in a fixed, predictable column order — only include
+    # columns that appear in at least one row.
+    _COLUMN_ORDER = ["filename", "taken_at", "lat", "lng", "gps_altitude",
+                     "distance_to_ground", "yaw"]
+    present = {key for row in rows for key in row}
+    fieldnames = [col for col in _COLUMN_ORDER if col in present]
 
     manifest_path = output_dir / "biigle_metadata.csv"
 
