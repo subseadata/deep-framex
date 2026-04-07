@@ -8,7 +8,7 @@ to extract, the interpolated sensor values at each offset, and the project
 metadata.  No database connection is needed — everything the extractor requires
 travels with the plan.
 
-This makes extract_frames suitable for use in a worker process or on a remote
+This makes decode_frames suitable for use in a worker process or on a remote
 machine: receive a plan (e.g. deserialised from JSON), open the video file, and
 yield frames.  The only external dependency is that plan.video_file.path must
 be readable on the machine running this function.
@@ -29,7 +29,7 @@ from ..models.models import ExtractedFrame, FrameMetadata, VideoExtractionPlan
 from .video_reader import open_video
 
 
-def extract_frames(
+def decode_frames(
     plan: VideoExtractionPlan,
 ) -> Iterator[ExtractedFrame]:
     """Yield fully annotated ExtractedFrames for all planned offsets in one video.

@@ -178,7 +178,7 @@ Each pipeline stage is a standalone function.  You can call any stage independen
 from soi_frame_extractor.config.spec_parser import spec_from_file
 from soi_frame_extractor.config.video_discovery import discover_videos
 from soi_frame_extractor.extraction.video_session import create_video_session
-from soi_frame_extractor.extraction.frame_extractor import extract_frames
+from soi_frame_extractor.extraction.frame_extractor import decode_frames
 from soi_frame_extractor.planning.planner import plan
 from soi_frame_extractor.db.session_db import create_session_db, close_session_db
 from soi_frame_extractor.data.importer import import_csv
@@ -202,7 +202,7 @@ for p in plans:
 **Extraction without writing** — get raw frames as NumPy arrays:
 
 ```python
-for frame in extract_frames(video_plan):
+for frame in decode_frames(video_plan):
     # frame.frame is (H, W, 3) uint8 RGB
     # frame.metadata holds utc_timestamp, sensor values, project metadata
     process(frame.frame)

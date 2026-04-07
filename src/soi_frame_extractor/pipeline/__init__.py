@@ -47,7 +47,7 @@ from ..config.spec_parser import spec_from_file
 from ..config.video_discovery import discover_videos
 from ..data.importer import import_csv
 from ..db.session_db import create_session_db, close_session_db
-from ..extraction.frame_extractor import extract_frames
+from ..extraction.frame_extractor import decode_frames
 from ..extraction.video_session import create_video_session
 from ..metadata.biigle import write_biigle_manifest
 from ..metadata.ifdo import write_ifdo_manifest
@@ -91,7 +91,7 @@ def _extract_and_write_video(
     if stream_output:
         # Write each frame immediately — peak memory is one decoded frame.
         written = []
-        for frame in extract_frames(video_plan):
+        for frame in decode_frames(video_plan):
             result = write_frame(
                 frame, output_dir, filename_template,
                 xmp_namespace_uri, xmp_namespace_prefix,
@@ -100,14 +100,14 @@ def _extract_and_write_video(
         return written
     else:
         # Buffer all frames for this video, then write as a batch.
-        frames = list(extract_frames(video_plan))
+        frames = list(decode_frames(video_plan))
         return output_frames(
             frames, output_dir, filename_template,
             xmp_namespace_uri, xmp_namespace_prefix,
         )
 
 
-def run(
+def extract(
     spec_path: Path,
     video_source: Path | list[Path],
     output_dir: Path,
