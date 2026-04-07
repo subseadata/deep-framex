@@ -212,6 +212,57 @@ path, meta = write_frame(frame, output_dir, filename_template=None,
                          xmp_namespace_prefix="myns")
 ```
 
+## Generating BIIGLE metadata from existing images
+
+If you already have a set of extracted images and just need a BIIGLE-compatible metadata CSV — without re-extracting from video — use the standalone assembler.  No video files or pixel data are required.
+
+You need a list of `(filename, utc_datetime)` pairs.  There are two helpers depending on how your filenames are structured:
+
+**Filenames produced by this tool** — parse the timestamp directly out of the filename using the same template string:
+
+```python
+from pathlib import Path
+from soi_frame_extractor.utils.timestamps import parse_filename_template
+
+files = [
+    (p.name, parse_filename_template(p, "{dive_id}_{utc}"))
+    for p in sorted(Path("frames/").glob("*.jpg"))
+]
+```
+
+**Generic filenames with a separate CSV** — read a CSV that maps filenames to timestamps:
+
+```python
+from soi_frame_extractor.utils.timestamps import parse_file_list_csv
+
+# file_list.csv columns: filename, timestamp
+files = parse_file_list_csv(Path("file_list.csv"))
+```
+
+Then assemble and write:
+
+```python
+from soi_frame_extractor.metadata.assemble import assemble_biigle_records
+from soi_frame_extractor.metadata.biigle import write_biigle_manifest
+from soi_frame_extractor.models.models import ColumnMappings
+
+records = assemble_biigle_records(
+    files=files,
+    csv_path=Path("sensors.csv"),       # omit if no sensor data
+    mappings=ColumnMappings(
+        timestamp="Timestamp",
+        latitude="Lat_ddeg",
+        longitude="Lon_ddeg",
+        depth="Depth_m",
+    ),
+    project_metadata={"cruise_id": "FK250101", "dive_id": "S0042"},
+)
+
+write_biigle_manifest(records, Path("output/"))
+```
+
+`assemble_biigle_records` interpolates sensor values at each image's timestamp using the same median-based interpolation as the extraction pipeline.  The sensor CSV need not align exactly with frame timestamps.
+
 ## Structure
 
 ```

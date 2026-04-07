@@ -49,6 +49,7 @@ from ..data.importer import import_csv
 from ..db.session_db import create_session_db, close_session_db
 from ..extraction.frame_extractor import extract_frames
 from ..extraction.video_session import create_video_session
+from ..metadata.biigle import write_biigle_manifest
 from ..metadata.ifdo import write_ifdo_manifest
 from ..models.models import FrameMetadata, VideoExtractionPlan
 from ..output.output_frames import output_frames, validate_filename_template, write_frame
@@ -221,5 +222,6 @@ def run(
         # the iFDO manifest should be in chronological order.
         all_written.sort(key=lambda pair: pair[1].utc_timestamp)
 
-    # --- Stage 10: write iFDO manifest ---
+    # --- Stage 10: write iFDO and BIIGLE manifests ---
     write_ifdo_manifest(all_written, output_dir)
+    write_biigle_manifest(all_written, output_dir)

@@ -85,7 +85,7 @@ def plan(
 
     # Check once here whether sensor data was loaded — avoids repeated database
     # lookups inside the per-frame loop below.
-    sensor_cols = _sensor_columns(conn)
+    sensor_cols = sensor_columns(conn)
 
     # video_frames accumulates FrameSpec objects per video, keeping offset and
     # sensor snapshot together so they can never get out of sync.
@@ -108,7 +108,7 @@ def plan(
             continue
 
         # Interpolate sensor readings at this exact timestamp.
-        snapshot = _interpolate_sensor(utc.timestamp(), sensor_cols, conn, spec.interpolation_window) if sensor_cols else {}
+        snapshot = interpolate_sensor(utc.timestamp(), sensor_cols, conn, spec.interpolation_window) if sensor_cols else {}
 
         # Keep offset and snapshot together in a FrameSpec — the plan is self-contained
         # and the extractor needs no database access.
@@ -353,7 +353,7 @@ def _sample_timestamps(
     return timestamps
 
 
-def _sensor_columns(conn: sqlite3.Connection) -> list[str]:
+def sensor_columns(conn: sqlite3.Connection) -> list[str]:
     """Return sensor column names (excluding timestamp) if the table exists.
 
     Returns an empty list if sensor_readings does not exist, meaning no CSV
@@ -371,7 +371,7 @@ def _sensor_columns(conn: sqlite3.Connection) -> list[str]:
     ]
 
 
-def _interpolate_sensor(
+def interpolate_sensor(
     ts: float,
     sensor_cols: list[str],
     conn: sqlite3.Connection,
