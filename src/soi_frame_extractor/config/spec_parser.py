@@ -97,6 +97,12 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
 
     rules = []
     for i, raw_rule in enumerate(raw['rules']):
+        if not isinstance(raw_rule, dict):
+            raise ValueError(
+                f"Rule {i}: each rule must be a YAML mapping (got {type(raw_rule).__name__} {raw_rule!r}). "
+                "Check that your rules block uses the correct indentation — each rule should start "
+                "with '- interval_s: ...' with no extra quoting."
+            )
         if 'interval_s' not in raw_rule:
             raise ValueError(f"Rule {i}: missing 'interval_s'")
         try:
