@@ -10,7 +10,7 @@ and this module handles sensor interpolation and model construction.
 """
 
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ..data.importer import import_csv
@@ -62,6 +62,13 @@ def assemble_biigle_records(
             "mappings was provided but csv_path is None. "
             "Supply a csv_path to load sensor data from."
         )
+
+    for filename, utc in files:
+        if utc.tzinfo is None:
+            raise ValueError(
+                f"Timestamp for '{filename}' is not timezone-aware. "
+                "All datetimes must be UTC-aware (e.g., datetime(..., tzinfo=timezone.utc))."
+            )
 
     conn: sqlite3.Connection = create_session_db()
     try:
