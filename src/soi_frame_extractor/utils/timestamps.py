@@ -86,16 +86,18 @@ def _template_to_regex(template: str) -> re.Pattern:
             "The filename must contain {utc} to parse a timestamp from it."
         )
 
-    # Split on {key} placeholders — parts alternate: literal, key, literal, key, ...
-    parts = re.split(r"\{(\w+)\}", stem)
+    # Split on {key} or {key:format_spec} placeholders.
+    # Capturing only \w+ extracts the key name; [^}]* consumes any format spec.
+    # Parts alternate: literal, key, literal, key, ...
+    parts = re.split(r"\{(\w+)[^}]*\}", stem)
     regex_parts = []
     for i, part in enumerate(parts):
         if i % 2 == 0:
             regex_parts.append(re.escape(part))     # literal text
         elif part == "utc":
-            regex_parts.append(_UTC_REGEX)           # precise UTC capture
+            regex_parts.append(_UTC_REGEX)      # precise UTC capture
         else:
-            regex_parts.append(f"(?P<{part}>.+?)")  # wildcard for other keys
+            regex_parts.append("(?:.+?)")       # wildcard — value never read
 
     return re.compile("^" + "".join(regex_parts) + "$")
 
