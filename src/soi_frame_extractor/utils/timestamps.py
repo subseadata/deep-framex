@@ -34,7 +34,6 @@ from pathlib import Path
 _UTC_REGEX = r"(?P<utc>\d{8}T\d{6}(?:\d{3}(?:\d{3})?)?)"
 
 
-
 def _parse_utc_string(utc_str: str) -> datetime:
     """Parse a UTC string matched by _UTC_REGEX into a timezone-aware datetime.
 
@@ -239,7 +238,7 @@ def parse_file_list_csv(
             )
 
         for row in reader:
-            dt = datetime.fromisoformat(row[timestamp_col].rstrip("Z"))
+            dt = datetime.fromisoformat(row[timestamp_col])
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             else:
