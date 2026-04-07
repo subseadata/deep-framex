@@ -10,7 +10,7 @@ and this module handles sensor interpolation and model construction.
 """
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 from ..data.importer import import_csv
@@ -23,7 +23,7 @@ def assemble_biigle_records(
     files: list[tuple[str, datetime]],
     csv_path: Path | None = None,
     mappings: ColumnMappings | None = None,
-    project_metadata: dict[str, str] = {},
+    project_metadata: dict[str, str] | None = None,
     interpolation_window: int = 2,
 ) -> list[tuple[Path, FrameMetadata]]:
     """Build BIIGLE-ready records from a file list and optional sensor CSV.
@@ -48,8 +48,8 @@ def assemble_biigle_records(
         directly to write_biigle_manifest.
 
     Raises:
-        ValueError: if csv_path is provided without mappings, or if mappings
-                    is provided without csv_path.
+        ValueError: if csv_path is provided without mappings, or vice versa.
+        ValueError: if any datetime in files is not timezone-aware.
         FileNotFoundError: if csv_path does not exist.
     """
     if csv_path is not None and mappings is None:
@@ -88,7 +88,7 @@ def assemble_biigle_records(
                 video_path=Path(filename),
                 offset_s=0.0,
                 sensor_snapshot=snapshot,
-                project_metadata=project_metadata,
+                project_metadata=project_metadata or {},
             )
             records.append((Path(filename), meta))
     finally:
