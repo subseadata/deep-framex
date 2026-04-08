@@ -7,7 +7,7 @@ into a VideoSession.
 
 from pathlib import Path
 
-from ..models.models import VideoFile
+from ..models.core import VideoFile
 from ..extraction.video_reader import probe_video
 
 # TODO: evaluate whether other formats (.avi, .mkv, .mts, .m4v) are needed

@@ -15,7 +15,7 @@ import av
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from ..models.models import Video, VideoFile
+from ..models.core import Video, VideoFile
 
 
 def open_video(video_file: VideoFile) -> Video:

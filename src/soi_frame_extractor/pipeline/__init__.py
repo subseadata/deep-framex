@@ -51,7 +51,7 @@ from ..extraction.frame_extractor import decode_frames
 from ..extraction.video_session import create_video_session
 from ..metadata.biigle import write_biigle_manifest
 from ..metadata.ifdo import write_ifdo_manifest
-from ..models.models import FrameMetadata, VideoExtractionPlan
+from ..models.core import FrameMetadata, VideoExtractionPlan
 from ..output.output_frames import output_frames, validate_filename_template, write_frame
 from ..planning.planner import plan as plan_extraction
 

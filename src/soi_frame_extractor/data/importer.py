@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..db.session_db import init_sensor_table
-from ..models.models import ColumnMappings, ImportedDataset
+from ..models.core import ColumnMappings, ImportedDataset
 
 
 def import_csv(
