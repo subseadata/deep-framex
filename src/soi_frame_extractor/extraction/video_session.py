@@ -7,7 +7,7 @@ planner's _assign_to_video will raise ValueError for any planned timestamp
 that falls in a gap, so gap handling is the caller's responsibility.
 """
 
-from ..models.models import VideoFile, VideoSession
+from ..models.core import VideoFile, VideoSession
 
 
 def create_video_session(video_files: list[VideoFile]) -> VideoSession:

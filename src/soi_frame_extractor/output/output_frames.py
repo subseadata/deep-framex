@@ -57,7 +57,7 @@ from pathlib import Path
 from PIL import Image
 
 from ..metadata.apply_metadata import _build_exif, _build_iptc, _build_xmp
-from ..models.models import ExtractedFrame, FrameMetadata
+from ..models.core import ExtractedFrame, FrameMetadata
 
 _DEFAULT_TEMPLATE = "{utc}_{video_stem}.jpg"
 

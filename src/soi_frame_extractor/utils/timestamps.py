@@ -204,7 +204,7 @@ def parse_file_list_csv(
         from soi_frame_extractor.utils.timestamps import parse_file_list_csv
         from soi_frame_extractor.metadata.assemble import assemble_biigle_records
         from soi_frame_extractor.metadata.biigle import write_biigle_manifest
-        from soi_frame_extractor.models.models import ColumnMappings
+        from soi_frame_extractor.models.core import ColumnMappings
 
         files = parse_file_list_csv(Path("file_list.csv"))
 

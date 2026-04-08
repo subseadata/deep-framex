@@ -33,7 +33,7 @@ with area-based metadata could be added.
 import csv
 from pathlib import Path
 
-from ..models.models import FrameMetadata
+from ..models.core import FrameMetadata
 
 
 def _build_biigle_row(path: Path, meta: FrameMetadata) -> dict:

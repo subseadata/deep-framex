@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from soi_frame_extractor.metadata.assemble import assemble_biigle_records
-from soi_frame_extractor.models.models import ColumnMappings
+from soi_frame_extractor.models.core import ColumnMappings
 
 
 T1 = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
@@ -83,7 +83,7 @@ def test_naive_datetime_raises():
 
 # Return type is list of (Path, FrameMetadata) pairs.
 def test_return_type():
-    from soi_frame_extractor.models.models import FrameMetadata
+    from soi_frame_extractor.models.core import FrameMetadata
     files = [("frame_001.jpg", T1)]
     records = assemble_biigle_records(files)
     assert isinstance(records, list)

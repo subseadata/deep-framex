@@ -50,7 +50,7 @@ import json
 import uuid
 from pathlib import Path
 
-from ..models.models import FrameMetadata
+from ..models.core import FrameMetadata
 from ..utils.coordinates import normalize_longitude
 
 

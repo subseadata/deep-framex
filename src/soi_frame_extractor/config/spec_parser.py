@@ -40,7 +40,7 @@ from pathlib import Path
 
 import yaml
 
-from ..models.models import (
+from ..models.core import (
     ColumnMappings,
     ExtractionRule,
     ExtractionSpec,

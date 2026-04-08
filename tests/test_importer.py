@@ -4,7 +4,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from soi_frame_extractor.data.importer import import_csv
 from soi_frame_extractor.db.session_db import create_session_db
-from soi_frame_extractor.models.models import ColumnMappings
+from soi_frame_extractor.models.core import ColumnMappings
 
 
 # Fixture: fresh in-memory DB for each test.

@@ -41,7 +41,7 @@ from datetime import datetime, timezone
 
 import piexif
 
-from ..models.models import FIELD_REGISTRY, FrameMetadata
+from ..models.core import FIELD_REGISTRY, FrameMetadata
 from ..utils.coordinates import decimal_to_dms, decimal_to_ref, normalize_longitude
 
 def _build_exif(meta: FrameMetadata) -> bytes:

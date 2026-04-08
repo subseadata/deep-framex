@@ -24,7 +24,7 @@ from pathlib import Path
 from statistics import median
 
 from ..db.session_db import init_frame_plan_table
-from ..models.models import (
+from ..models.core import (
     ExtractionRule,
     ExtractionSpec,
     FrameSpec,

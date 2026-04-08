@@ -25,7 +25,7 @@ and VideoFile (models.py).
 from collections.abc import Iterator
 from datetime import timedelta
 
-from ..models.models import ExtractedFrame, FrameMetadata, VideoExtractionPlan
+from ..models.core import ExtractedFrame, FrameMetadata, VideoExtractionPlan
 from .video_reader import open_video
 
 

@@ -15,7 +15,7 @@ from pathlib import Path
 
 from ..data.importer import import_csv
 from ..db.session_db import create_session_db, close_session_db
-from ..models.models import ColumnMappings, FrameMetadata
+from ..models.core import ColumnMappings, FrameMetadata
 from ..planning.planner import interpolate_sensor
 
 
