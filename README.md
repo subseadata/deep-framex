@@ -135,14 +135,12 @@ stream_output: true  # strongly recommended with max_workers > 1
 For Kubernetes, Airflow, AWS Batch, or any task queue, call the pipeline stages directly.  Planning runs once on a coordinator; each worker only needs its own video file.
 
 ```python
-from soi_frame_extractor.config.spec_parser import spec_from_file
-from soi_frame_extractor.config.video_discovery import discover_videos
-from soi_frame_extractor.extraction.video_session import create_video_session
-from soi_frame_extractor.db.session_db import create_session_db, close_session_db
-from soi_frame_extractor.data.importer import import_csv
-from soi_frame_extractor.planning.planner import plan
+from soi_frame_extractor import (
+    spec_from_file, discover_videos, create_video_session,
+    create_session_db, close_session_db, import_csv,
+    plan, write_ifdo_manifest,
+)
 from soi_frame_extractor.pipeline import _extract_and_write_video
-from soi_frame_extractor.metadata.ifdo import write_ifdo_manifest
 
 # --- planning (runs once, on the coordinator) ---
 spec    = spec_from_file(spec_path)
@@ -175,15 +173,11 @@ Each worker only needs access to its own video file — not the sensor CSV, the 
 Each pipeline stage is a standalone function.  You can call any stage independently without going through the CLI or the full pipeline.
 
 ```python
-from soi_frame_extractor.config.spec_parser import spec_from_file
-from soi_frame_extractor.config.video_discovery import discover_videos
-from soi_frame_extractor.extraction.video_session import create_video_session
-from soi_frame_extractor.extraction.frame_extractor import decode_frames
-from soi_frame_extractor.planning.planner import plan
-from soi_frame_extractor.db.session_db import create_session_db, close_session_db
-from soi_frame_extractor.data.importer import import_csv
-from soi_frame_extractor.output.output_frames import write_frame
-from soi_frame_extractor.metadata.ifdo import write_ifdo_manifest
+from soi_frame_extractor import (
+    spec_from_file, discover_videos, create_video_session,
+    decode_frames, plan, create_session_db, close_session_db,
+    import_csv, write_frame, write_ifdo_manifest,
+)
 ```
 
 **Planning only** — inspect what would be extracted before committing to a run:
@@ -211,7 +205,7 @@ for frame in decode_frames(video_plan):
 **Writing without the full pipeline** — embed metadata and save an already-decoded frame:
 
 ```python
-from soi_frame_extractor.output.output_frames import write_frame
+from soi_frame_extractor import write_frame
 
 path, meta = write_frame(frame, output_dir, filename_template=None,
                          xmp_namespace_uri="https://example.org/",
@@ -228,7 +222,7 @@ You need a list of `(filename, utc_datetime)` pairs.  There are two helpers depe
 
 ```python
 from pathlib import Path
-from soi_frame_extractor.utils.timestamps import parse_filename_template
+from soi_frame_extractor import parse_filename_template
 
 files = [
     (p.name, parse_filename_template(p, "{dive_id}_{utc}"))
@@ -239,7 +233,7 @@ files = [
 **Generic filenames with a separate CSV** — read a CSV that maps filenames to timestamps:
 
 ```python
-from soi_frame_extractor.utils.timestamps import parse_file_list_csv
+from soi_frame_extractor import parse_file_list_csv
 
 # file_list.csv columns: filename, timestamp
 files = parse_file_list_csv(Path("file_list.csv"))
@@ -248,9 +242,7 @@ files = parse_file_list_csv(Path("file_list.csv"))
 Then assemble and write:
 
 ```python
-from soi_frame_extractor.metadata.assemble import assemble_biigle_records
-from soi_frame_extractor.metadata.biigle import write_biigle_manifest
-from soi_frame_extractor.models.models import ColumnMappings
+from soi_frame_extractor import assemble_biigle_records, write_biigle_manifest, ColumnMappings
 
 records = assemble_biigle_records(
     files=files,
