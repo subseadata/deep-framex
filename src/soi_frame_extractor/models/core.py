@@ -62,10 +62,8 @@ class ColumnMappings(CustomBaseModel):
     fields; using these exact names triggers automatic routing to EXIF GPS
     tags and iFDO manifest fields.  Any additional entries the user supplies
     (e.g. temperature, salinity) are accepted and written to XMP.
-
-    Only columns present here are imported from the CSV — everything else
-    is ignored.
     """
+
     model_config = ConfigDict(extra='allow')
 
     timestamp: str                          # required — CSV column name for the UTC timestamp
