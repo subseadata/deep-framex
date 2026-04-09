@@ -43,7 +43,7 @@ import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-from ..config.spec_parser import spec_from_file
+from ..config.spec_parser import spec_from_dict, spec_from_file
 from ..config.video_discovery import discover_videos
 from ..data.importer import import_csv
 from ..db.session_db import create_session_db, close_session_db
@@ -108,24 +108,29 @@ def _extract_and_write_video(
 
 
 def extract(
-    spec_path: Path,
     video_source: Path | list[Path],
     output_dir: Path,
+    spec_path: Path | None = None,
+    spec: dict | None = None,
     csv_path: Path | None = None,
 ) -> None:
     """Execute a full extraction run from spec to annotated image files on disk.
 
-    Reads max_workers and stream_output from the spec (set in YAML).
+    Reads max_workers and stream_output from the spec (set in YAML or dict).
     max_workers=1 (default) runs sequentially.  max_workers>1 launches one
     worker process per video up to that limit.
 
     Args:
-        spec_path:    path to the YAML extraction spec.
         video_source: directory of video files, or an explicit list of paths.
         output_dir:   directory to write output image files into.
+        spec_path:    path to the YAML extraction spec.
+        spec:         extraction spec as a plain dict (same shape as the YAML).
         csv_path:     path to sensor CSV, or None if no sensor data.
 
+    Exactly one of spec_path or spec must be provided.
+
     Raises:
+        ValueError:        if neither or both of spec_path/spec are provided.
         FileNotFoundError: if spec_path, any video file, or csv_path does not
                            exist.
         ValueError:        if the spec is invalid, the filename template
@@ -135,7 +140,14 @@ def extract(
                            written.
     """
     # --- Stage 1: parse spec ---
-    spec = spec_from_file(spec_path)
+    if spec_path is not None and spec is not None:
+        raise ValueError("Provide either spec_path= or spec=, not both")
+    if spec_path is not None:
+        resolved_spec = spec_from_file(spec_path)
+    elif spec is not None:
+        resolved_spec = spec_from_dict(spec)
+    else:
+        raise ValueError("Provide either spec_path= or spec=")
 
     # --- Stage 2 & 3: discover videos and assemble session ---
     video_files = discover_videos(video_source)
@@ -147,28 +159,28 @@ def extract(
     try:
         # --- Stage 5: import sensor CSV ---
         sensor_keys: list[str] = []
-        if csv_path is not None and spec.mappings is None:
+        if csv_path is not None and resolved_spec.mappings is None:
             raise ValueError(
                 "A CSV file was provided (--data) but the spec has no 'mappings' block. "
                 "Add mappings (including 'timestamp') or omit --data."
             )
-        if csv_path is not None and spec.mappings is not None:
-            dataset = import_csv(csv_path, conn, spec.mappings)
+        if csv_path is not None and resolved_spec.mappings is not None:
+            dataset = import_csv(csv_path, conn, resolved_spec.mappings)
             sensor_keys = dataset.columns
 
         # --- Stage 6: validate filename template ---
-        if spec.filename_template is not None:
+        if resolved_spec.filename_template is not None:
             validate_filename_template(
-                spec.filename_template,
+                resolved_spec.filename_template,
                 sensor_keys,
-                list(spec.project_metadata.keys()),
+                list(resolved_spec.project_metadata.keys()),
             )
 
         # --- Stage 7: plan ---
         # plan() produces self-contained VideoExtractionPlan objects — sensor
         # snapshots and project metadata are embedded in each plan, so nothing
         # downstream needs the database.
-        plans = plan_extraction(spec, session, conn)
+        plans = plan_extraction(resolved_spec, session, conn)
 
     finally:
         # --- Stage 8: close DB — done with it ---
@@ -180,9 +192,9 @@ def extract(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Cap workers to the number of videos — no benefit spawning more.
-    effective_workers = min(spec.max_workers, len(plans))
+    effective_workers = min(resolved_spec.max_workers, len(plans))
 
-    if effective_workers > 1 and not spec.stream_output:
+    if effective_workers > 1 and not resolved_spec.stream_output:
         print(
             f"Warning: stream_output=false with {effective_workers} parallel workers "
             f"multiplies peak memory by {effective_workers}. "
@@ -192,10 +204,10 @@ def extract(
 
     worker_args = (
         output_dir,
-        spec.filename_template,
-        spec.xmp_namespace_uri,
-        spec.xmp_namespace_prefix,
-        spec.stream_output,
+        resolved_spec.filename_template,
+        resolved_spec.xmp_namespace_uri,
+        resolved_spec.xmp_namespace_prefix,
+        resolved_spec.stream_output,
     )
 
     all_written: list[tuple[Path, FrameMetadata]] = []
