@@ -1,22 +1,28 @@
 # soi-frame-extractor
 
-Frame extraction library for deep sea video.  Frames are self-describing — metadata is embedded directly into image files so context travels with the frame into any downstream system.
+Frame extraction library for deep sea video. Frames are self-describing and metadata is embedded directly into image files so context travels with the frame into any downstream system.
 
 ## Installation
-
-Install from source:
 
 **uv:**
 ```
 uv pip install git+https://github.com/schmidtocean/soi-frame-extractor
 ```
 
-**Pip:**
+**pip:**
 ```
 git clone <repo>
 cd soiFrameExtractor
 pip install -e .
 ```
+
+## Quickstart
+
+See the notebooks for worked examples:
+
+- **`notebooks/ExtractionExamples.ipynb`** — basic extraction: fixed intervals, sensor data, output files
+- **`notebooks/AdvancedExtraction.ipynb`** — time windows, sensor constraints, multi-rule specs, planning, parallel extraction
+- more to come!
 
 ## Command-line use
 
@@ -24,168 +30,143 @@ pip install -e .
 soi-extract <source> --spec <yaml> [--data <csv>] [--output <dir>]
 ```
 
-- `source`    path to a directory of video files, or one or more explicit video file paths
-- `--spec`    path to a YAML extraction spec (required)
-- `--data`    path to a sensor CSV file (optional — enables depth/location constraints and sensor metadata)
-- `--output`  directory to write extracted frames (default: `./frames`)
+| Argument | Description |
+|---|---|
+| `source` | Directory of video files, or one or more explicit video paths |
+| `--spec` | Path to a YAML extraction spec (required) |
+| `--data` | Path to a sensor CSV file (optional) |
+| `--output` | Output directory for extracted frames (default: `./frames`) |
 
-### Extraction spec
 
-The spec defines one or more extraction rules plus optional sensor column mappings and project metadata.  Each rule requires an interval and optionally UTC time periods, sensor constraints, or both.  If no periods or constraints are given, the rule applies to the full session.
+## Extraction spec
+
+The spec is a YAML file that defines extraction rules and optional sensor mappings, project metadata, and output settings. A fully annotated template is in `extraction_spec.yaml` at the repository root.
+
+Minimal spec — one frame every 10 seconds for the entire session:
 
 ```yaml
 rules:
-  # 1 frame every 10 seconds for the entire session
   - interval_s: 10.0
+```
 
-  # 1 frame every 2 seconds during a specific UTC window
+Rules can be restricted to UTC time windows (`periods`), sensor value ranges (`constraints`), or both. Periods and constraints on the **same rule intersect**; separate rules are **unioned**.
+
+```yaml
+rules:
+  # coarse baseline
+  - interval_s: 30.0
+
+  # denser during a specific UTC window
   - interval_s: 2.0
     periods:
       - start: "2025-11-15T10:25:00Z"
         end:   "2025-11-15T10:30:00Z"
 
-  # 1 frame every 5 seconds while depth is between 1000 and 1200 m
+  # dense while depth is between 1000 and 1200 m
   - interval_s: 5.0
     constraints:
       - column: depth
         min: 1000
         max: 1200
-
-  # periods and constraints on the same rule intersect:
-  # 1 frame every 2 seconds during the UTC window AND while below 500 m
-  - interval_s: 2.0
-    periods:
-      - start: "2025-11-15T10:25:00Z"
-        end:   "2025-11-15T10:30:00Z"
-    constraints:
-      - column: depth
-        max: 500
-
-mappings:                       # omit entirely if no sensor CSV is provided
-  timestamp:   Timestamp        # required — your CSV column that holds UTC time
-  latitude:    Latitude_ddeg    # your CSV column for latitude
-  longitude:   Longitude_ddeg   # your CSV column for longitude
-  depth:       Depth_m          # your CSV column for depth
-  temperature: Temp_degC        # any other columns you want to use
-
-metadata:                    # optional — arbitrary key/value pairs
-  cruise_id: FK250101        # written to iFDO and XMP in all output frames
-  dive_id:   S0042
-  vehicle:   SuBastian
-
-filename_template: "{dive_id}_{depth}m_T{utc}.jpg"  # optional
-# available variables: {utc}, {video_stem}, {offset_s}, any mappings key, any metadata key
-# omit to use the default: {utc}_{video_stem}.jpg
-
-stream_output: false  # true writes each frame to disk immediately (lower memory use)
-max_workers: 1        # number of parallel worker processes; see below
 ```
 
 All timestamps must be ISO 8601 with an explicit UTC offset (`Z` or `+00:00`).
 
-### Mapping your sensor data
+### Sensor mappings
 
-The `mappings` block tells the tool which columns to read from your CSV and what to call them.  Each line follows this pattern:
+The `mappings` block tells the tool which CSV columns to load and what to call them. Required whenever a sensor CSV is provided.
 
+```yaml
+mappings:
+  timestamp:   Timestamp        # required — your CSV column for UTC time
+  latitude:    Latitude_ddeg
+  longitude:   Longitude_ddeg
+  depth:       Depth_m
+  temperature: Temp_degC        # any other columns you want
 ```
-name_for_this_tool: Column Name In Your CSV
-```
 
-**The right side** is your CSV column header, copied exactly as it appears — including any spaces or special characters.  If your column is named `VelocityFwd_m/s`, write that on the right.
+The left-hand name is what the tool uses everywhere in constraint rules, filename templates, and image metadata. The right-hand value is the exact column header from your CSV.
 
-**The left side** is the name the tool will use for that column — in constraint rules, filename templates, and image metadata.  It must contain only letters, numbers, and underscores.  If your CSV has `VelocityFwd_m/s`, write something like `velocityfwd` on the left.
+These left-side names trigger automatic routing to specific metadata fields:
 
-**Only the columns you list are loaded.**  Everything else in your CSV is ignored — columns with string values, status flags, or other non-numeric content are fine as long as you do not map them.  Any column you *do* map must contain numeric values.
-
-The names on the left side determine where values end up in output metadata.  These specific names trigger automatic routing to EXIF GPS tags and the iFDO manifest:
-
-| Left-side name | Where it goes |
+| Name | Destination |
 |---|---|
-| `latitude` | EXIF GPSLatitude + iFDO image-latitude — decimal degrees only (e.g. `-44.2895`), negative = south |
-| `longitude` | EXIF GPSLongitude + iFDO image-longitude — decimal degrees only (e.g. `-59.9191`), negative = west; 0–360 also accepted |
-| `depth` | EXIF GPSAltitude (tagged as below sea level) + iFDO image-depth |
+| `latitude` | EXIF GPSLatitude + iFDO image-latitude (decimal degrees; negative = south) |
+| `longitude` | EXIF GPSLongitude + iFDO image-longitude (decimal degrees; negative = west; 0–360 also accepted) |
+| `depth` | EXIF GPSAltitude (below sea level) + iFDO image-depth |
 | `altitude` | iFDO image-altitude-meters |
 | `heading` | iFDO image-heading |
 | `pitch` | iFDO image-pitch |
 | `roll` | iFDO image-roll |
 
-Any other name you choose is fine — the values are written to the XMP layer of each image.  For example, mapping `z: Depth_m` stores depth in XMP only.  Mapping `depth: Depth_m` puts it in EXIF, XMP, and iFDO.
 
-The `timestamp` entry is required if you provide a CSV.
+Any other name is written to XMP only. Only the columns you list are loaded, everything else in the CSV is ignored.
 
-**Rule composition:** periods and constraints on the *same* rule intersect — frames are only extracted where all conditions are simultaneously met.  Separate rules are unioned — each rule contributes its timestamps independently and duplicates are removed.
+### Other spec options
 
-## Parallel and distributed extraction
+| Key | Default | Description |
+|---|---|---|
+| `metadata` | — | Arbitrary key/value pairs embedded in every frame (EXIF, IPTC, XMP, iFDO) |
+| `filename_template` | `{utc}_{video_stem}.jpg` | Output filename pattern — variables: `{utc}`, `{video_stem}`, `{offset_s}`, any mapping key, any metadata key |
+| `initial_offset_s` | `0.0` | Shift the sampling grid this many seconds from session start |
+| `interpolation_window` | `2` | Sensor rows to use on each side when interpolating values |
+| `stream_output` | `false` | Write each frame immediately instead of buffering per video |
+| `max_workers` | `1` | Worker processes for extraction; `>1` extracts multiple videos in parallel |
+| `xmp_namespace_uri` | `https://soi-frame-extractor.org/xmp/v1/` | URI for the custom XMP namespace |
+| `xmp_namespace_prefix` | `sfe` | Prefix for the custom XMP namespace |
 
-By default the tool extracts one video at a time.  Setting `max_workers` runs a pool of worker processes — if you have 27 videos and 5 workers, all 5 stay busy until all 27 are done.
 
-```yaml
-max_workers: 4       # up to 4 videos extracted at once
-stream_output: true  # strongly recommended with max_workers > 1
-```
+**Highly Reccommended:** always include `{utc}` in your filename template. The planner guarantees unique timestamps, so `{utc}` guarantees unique filenames. Templates that omit it may silently overwrite frames.
 
-**Always set `stream_output: true` when using multiple workers.**  Without it each worker buffers an entire video's decoded frames in memory before writing.  At 4K with a 10-second interval that is roughly 1.4 GB per worker.  With `stream_output: true` peak memory stays at one frame (~24 MB) per worker regardless of video length.
+When using `max_workers > 1`, set `stream_output: true`. Without it, each worker buffers a full video's decoded frames in memory before writing (≈1.4 GB per worker at 4K/10 s).
 
-**Include `{utc}` in your filename template when using multiple workers.**  Workers write to the same output directory concurrently.  The planner guarantees unique timestamps, so `{utc}` guarantees unique filenames with no collision risk.
+## Output
 
-`max_workers` uses Python's `ProcessPoolExecutor` — local subprocesses on the same machine.  Each worker receives a self-contained extraction plan and opens its own copy of the video file.  No shared state between workers.
+Each extraction run produces:
 
-### Distributed / cloud workers
+| File | Description |
+|---|---|
+| `*.jpg` | Extracted frames with EXIF, IPTC, and XMP metadata embedded |
+| `ifdo.json` | iFDO dataset manifest — one entry per frame |
+| `biigle_metadata.csv` | Metadata CSV ready to upload to BIIGLE |
 
-For Kubernetes, Airflow, AWS Batch, or any task queue, call the pipeline stages directly.  Planning runs once on a coordinator; each worker only needs its own video file.
+
+## Library API Examples
+
+Each pipeline stage is a standalone function. Import what you need:
 
 ```python
 from soi_frame_extractor import (
-    spec_from_file, discover_videos, create_video_session,
+    extract,
+    spec_from_file, spec_from_dict,
+    discover_videos, create_video_session,
     create_session_db, close_session_db, import_csv,
-    plan, write_ifdo_manifest,
-)
-from soi_frame_extractor.pipeline import _extract_and_write_video
-
-# --- planning (runs once, on the coordinator) ---
-spec    = spec_from_file(spec_path)
-session = create_video_session(discover_videos(video_source))
-conn    = create_session_db()
-if csv_path:
-    import_csv(csv_path, conn, spec.mappings)
-plans = plan(spec, session, conn)
-close_session_db(conn)   # database only needed for planning; discard it here
-
-# --- dispatch (one plan = one worker) ---
-for p in plans:
-    payload = p.model_dump_json()   # self-contained JSON, ~2 KB per video
-    my_queue.send(payload)          # Airflow task, K8s Job, SQS message, etc.
-
-# --- each worker ---
-# plan = VideoExtractionPlan.model_validate_json(payload)
-# result = _extract_and_write_video(plan, output_dir, ...)
-# return result   # list of (path, FrameMetadata)
-
-# --- gather and write manifest (back on coordinator) ---
-all_results = my_queue.collect_all()
-write_ifdo_manifest([item for r in all_results for item in r], output_dir)
-```
-
-Each worker only needs access to its own video file — not the sensor CSV, the session database, or any other video.  For cloud-hosted video (S3, GCS), the file must currently be downloaded before the worker runs; direct remote URL support is planned.
-
-## Using as a library
-
-Each pipeline stage is a standalone function.  You can call any stage independently without going through the CLI or the full pipeline.
-
-```python
-from soi_frame_extractor import (
-    spec_from_file, discover_videos, create_video_session,
-    decode_frames, plan, create_session_db, close_session_db,
-    import_csv, write_frame, write_ifdo_manifest,
+    plan, decode_frames,
+    write_frame, write_ifdo_manifest, write_biigle_manifest,
+    assemble_biigle_records, parse_filename_template, parse_file_list_csv,
 )
 ```
 
-**Planning only** — inspect what would be extracted before committing to a run:
+**Full run from a YAML spec:**
 
 ```python
-spec    = spec_from_file("my_spec.yaml")
-session = create_video_session(discover_videos(Path("video_dir/")))
+from soi_frame_extractor import extract
+
+extract(
+    spec_path=Path("spec.yaml"),
+    video_source=Path("video/"),
+    output_dir=Path("frames/"),
+    csv_path=Path("sensors.csv"),   # omit if no sensor data
+)
+```
+
+**Planning without extraction** — inspect what would be extracted:
+
+```python
+spec    = spec_from_file("spec.yaml")
+session = create_video_session(discover_videos(Path("video/")))
 conn    = create_session_db()
+import_csv(csv_path, conn, spec.mappings)
 plans   = plan(spec, session, conn)
 close_session_db(conn)
 
@@ -193,7 +174,7 @@ for p in plans:
     print(p.video_file.path.name, len(p.frames), "frames")
 ```
 
-**Extraction without writing** — get raw frames as NumPy arrays:
+**Extraction without writing** — raw frames as NumPy arrays:
 
 ```python
 for frame in decode_frames(video_plan):
@@ -202,64 +183,57 @@ for frame in decode_frames(video_plan):
     process(frame.frame)
 ```
 
-**Writing without the full pipeline** — embed metadata and save an already-decoded frame:
+### Distributed / cloud workers - NEEDS TESTING
+
+`plan()` produces self-contained `VideoExtractionPlan` objects that can be serialised to JSON and dispatched to remote workers. Each worker only needs its own video file — not the sensor CSV, the session database, or any other video.
 
 ```python
-from soi_frame_extractor import write_frame
+plans = plan(spec, session, conn)
+close_session_db(conn)
 
-path, meta = write_frame(frame, output_dir, filename_template=None,
-                         xmp_namespace_uri="https://example.org/",
-                         xmp_namespace_prefix="myns")
+for p in plans:
+    payload = p.model_dump_json()   # self-contained JSON, ~2 KB
+    my_queue.send(payload)          # Airflow task, K8s Job, SQS message, etc.
+
+# Each worker:
+# plan = VideoExtractionPlan.model_validate_json(payload)
+# result = _extract_and_write_video(plan, output_dir, ...)
+
+# Coordinator — gather and write manifests:
+all_results = my_queue.collect_all()
+write_ifdo_manifest([item for r in all_results for item in r], output_dir)
+write_biigle_manifest([item for r in all_results for item in r], output_dir)
 ```
 
-## Generating BIIGLE metadata from existing images
+### Generating BIIGLE metadata from existing images
 
-If you already have a set of extracted images and just need a BIIGLE-compatible metadata CSV — without re-extracting from video — use the standalone assembler.  No video files or pixel data are required.
-
-You need a list of `(filename, utc_datetime)` pairs.  There are two helpers depending on how your filenames are structured:
-
-**Filenames produced by this tool** — parse the timestamp directly out of the filename using the same template string:
+To build a BIIGLE-compatible CSV from a set of already-extracted images without re-running the full pipeline:
 
 ```python
-from pathlib import Path
-from soi_frame_extractor import parse_filename_template
+from soi_frame_extractor import (
+    parse_filename_template, assemble_biigle_records,
+    write_biigle_manifest, ColumnMappings,
+)
 
+# Parse timestamps from filenames produced by this tool
 files = [
     (p.name, parse_filename_template(p, "{dive_id}_{utc}"))
     for p in sorted(Path("frames/").glob("*.jpg"))
 ]
-```
 
-**Generic filenames with a separate CSV** — read a CSV that maps filenames to timestamps:
-
-```python
-from soi_frame_extractor import parse_file_list_csv
-
-# file_list.csv columns: filename, timestamp
-files = parse_file_list_csv(Path("file_list.csv"))
-```
-
-Then assemble and write:
-
-```python
-from soi_frame_extractor import assemble_biigle_records, write_biigle_manifest, ColumnMappings
+# Or read a CSV mapping filenames to timestamps
+# files = parse_file_list_csv(Path("file_list.csv"))
 
 records = assemble_biigle_records(
     files=files,
-    csv_path=Path("sensors.csv"),       # omit if no sensor data
-    mappings=ColumnMappings(
-        timestamp="Timestamp",
-        latitude="Lat_ddeg",
-        longitude="Lon_ddeg",
-        depth="Depth_m",
-    ),
+    csv_path=Path("sensors.csv"),
+    mappings=ColumnMappings(timestamp="Timestamp", depth="Depth_m",
+                            latitude="Lat_ddeg", longitude="Lon_ddeg"),
     project_metadata={"cruise_id": "FK250101", "dive_id": "S0042"},
 )
 
 write_biigle_manifest(records, Path("output/"))
 ```
-
-`assemble_biigle_records` interpolates sensor values at each image's timestamp using the same median-based interpolation as the extraction pipeline.  The sensor CSV need not align exactly with frame timestamps.
 
 ## Structure
 
@@ -271,47 +245,31 @@ src/soi_frame_extractor/
 ├── db/              # in-memory SQLite session database — used during planning only
 ├── planning/        # translate rules, time periods, and sensor constraints into frame offsets
 ├── extraction/      # open video containers and decode frames
-├── metadata/        # embed metadata into image files (EXIF, IPTC, XMP) and write iFDO sidecar
+├── metadata/        # embed metadata into image files (EXIF, IPTC, XMP), iFDO and BIIGLE manifests
 ├── output/          # write frames to disk
-├── utils/           # coordinate conversion
-├── cache/           # (planned) cache sampling and indexing
-└── viz/             # (planned) map view of extracted frame positions
+└── utils/           # coordinate conversion, timestamp parsing
 ```
 
-## Pipeline stages
+### Pipeline stages
 
-### Spec parser (`config/spec_parser.py`)
-Reads a YAML spec file into an `ExtractionSpec`.  Validates all rules, periods, constraints, and datetime strings.  Raises `ValueError` immediately on any invalid input.
+| Stage | Module | Description |
+|---|---|---|
+| Spec parser | `config/spec_parser.py` | Reads YAML into `ExtractionSpec`; validates all rules, periods, constraints, and datetime strings |
+| Video discovery | `config/video_discovery.py` | Resolves a directory or file list into probed `VideoFile` objects with UTC start time and duration |
+| Session database | `db/session_db.py` | In-memory SQLite used only during planning; holds sensor readings and the frame plan; discarded after `plan()` returns |
+| Data importer | `data/importer.py` | Loads the sensor CSV into the session database; only mapped columns are imported |
+| Planner | `planning/planner.py` | Processes rules against the database — intersects periods and constraints, samples at `interval_s`, unions across rules, interpolates sensor values — produces self-contained `VideoExtractionPlan` objects |
+| Extractor | `extraction/frame_extractor.py` | Generator that yields `ExtractedFrame` objects from a single plan; seeks to each planned offset and decodes the closest frame; no database access |
+| Metadata writer | `metadata/apply_metadata.py` | Builds EXIF, IPTC, and XMP byte blocks for a single frame; called at save time, embedded in a single Pillow write |
+| iFDO manifest | `metadata/ifdo.py` | Writes `ifdo.json` sidecar once per run; one entry per frame, keyed by filename |
+| BIIGLE manifest | `metadata/biigle.py` | Writes `biigle_metadata.csv` once per run |
+| Frame writer | `output/output_frames.py` | Writes frames to disk; generates filenames from template; returns `(path, FrameMetadata)` pairs |
 
-### Video discovery (`config/video_discovery.py`)
-Resolves a directory or an explicit list of file paths into probed `VideoFile` objects.  Each `VideoFile` carries its UTC start time (read from the file's `creation_time` tag) and duration.
 
-### Session database (`db/session_db.py`)
-An in-memory SQLite database used only during planning.  Holds sensor readings from the CSV and the resulting frame plan.  Discarded after `plan()` returns — the extractor does not use it.
-
-### Data importer (`data/importer.py`)
-Loads a CSV into the session database.  Only the columns listed in the `mappings` block are imported; everything else is ignored.  Left-side names become the column names used everywhere downstream.
-
-### Planner (`planning/planner.py`)
-Processes each rule against the session database — intersecting time periods and sensor constraint windows, sampling at `interval_s`, then unioning and deduplicating across all rules.  Interpolates sensor values at each planned timestamp and packages everything into self-contained `VideoExtractionPlan` objects.  After this stage the database is no longer needed.
-
-### Extractor (`extraction/frame_extractor.py`)
-A generator that yields `ExtractedFrame` objects from a single `VideoExtractionPlan`.  Opens the video file, seeks to each planned offset in order, decodes the closest frame, and attaches the pre-computed sensor values and project metadata.  No database access.  Each plan is a self-contained unit of work — suitable for running in a subprocess or on a remote worker.
-
-### Metadata writer (`metadata/apply_metadata.py`)
-Builds EXIF, IPTC, and XMP byte blocks for a single frame.  Called by the frame writer at save time — metadata is embedded in a single Pillow save, not written in a separate pass.
-
+**Metadata layers per frame:**
 - **EXIF**: GPS latitude, longitude, altitude (depth), timestamp, camera make/model
-- **IPTC**: credit, source, copyright notice, caption, date/time created
-- **XMP**: creation date, plus all sensor columns and project metadata not already routed to EXIF or IPTC — written under a configurable namespace (default: `sfe:` / `https://soi-frame-extractor.org/xmp/v1/`)
-
-### iFDO manifest (`metadata/ifdo.py`)
-Writes a single `ifdo.json` sidecar file for the whole extraction run.  One entry per frame, keyed by filename, containing UUID, datetime, position, depth, orientation, and project fields.  Written once at the end of a run after all frames are complete.  Separate from the per-image metadata — does not require re-reading any image files.
-
-### Frame writer (`output/output_frames.py`)
-Writes frames to a local output directory.  Generates filenames from the user-supplied template, calls the metadata builders, and saves each image once.  Returns `(path, FrameMetadata)` pairs — pixel data is written and discarded; the returned metadata is sufficient to build the iFDO manifest without holding frames in memory.
-
-Supports JPEG (full metadata: EXIF + IPTC + XMP) and TIFF (EXIF only).
+- **IPTC**: credit, source, copyright, caption, date/time created
+- **XMP**: creation date, plus all sensor and project fields not routed to EXIF or IPTC, written under a configurable namespace (default `sfe:`)
 
 ## User Story Functionality (I want to...)
 - extract frames from video at a defined time interval *(e.g., 1 every 5 seconds, 1 every 10 seconds)*
