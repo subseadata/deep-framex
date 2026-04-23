@@ -1,8 +1,8 @@
 import pytest
 from datetime import datetime, timezone
 from pathlib import Path
-from soi_frame_extractor.output.output_frames import validate_filename_template, _render_filename
-from soi_frame_extractor.models.models import ExtractedFrame, FrameMetadata
+from deep_framex.output.output_frames import validate_filename_template, _render_filename
+from deep_framex.models.core import ExtractedFrame, FrameMetadata
 import numpy as np
 
 

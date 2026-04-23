@@ -1,4 +1,4 @@
-"""Shared data models for soi-frame-extractor.
+"""Shared data models for deep-framex.
 
 All core data structures used across the library are defined here.
 """
@@ -62,10 +62,8 @@ class ColumnMappings(CustomBaseModel):
     fields; using these exact names triggers automatic routing to EXIF GPS
     tags and iFDO manifest fields.  Any additional entries the user supplies
     (e.g. temperature, salinity) are accepted and written to XMP.
-
-    Only columns present here are imported from the CSV — everything else
-    is ignored.
     """
+
     model_config = ConfigDict(extra='allow')
 
     timestamp: str                          # required — CSV column name for the UTC timestamp
@@ -127,8 +125,8 @@ class ExtractionSpec(CustomBaseModel):
     rules: list[ExtractionRule]
     mappings: ColumnMappings | None = None          # omit if no CSV was imported
     project_metadata: dict[str, str] = {}
-    xmp_namespace_uri: str = "https://soi-frame-extractor.org/xmp/v1/"
-    xmp_namespace_prefix: str = "sfe"
+    xmp_namespace_uri: str = "https://deep-framex.org/xmp/v1/"
+    xmp_namespace_prefix: str = "dfx"
     filename_template: str | None = None            # omit to use default naming
     initial_offset_s: float = 0.0                   # shift the sampling grid this many seconds from session start
     interpolation_window: int = 2                   # number of sensor rows to use on each side when interpolating
@@ -150,7 +148,7 @@ class VideoExtractionPlan(CustomBaseModel):
     video_file: VideoFile
     frames: list[FrameSpec]             # planned frames in ascending offset order
     project_metadata: dict[str, str] = {}  # passed through to every frame's metadata
-    # NOTE: video_file.path must be resolvable on whatever machine runs extract_frames.
+    # NOTE: video_file.path must be resolvable on whatever machine runs decode_frames.
     # For distributed workers this means a shared filesystem, pre-staged local copy,
     # or (future) a URL string — see open_video in video_reader.py.
 

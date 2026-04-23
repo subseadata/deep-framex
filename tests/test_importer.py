@@ -2,9 +2,9 @@ import pytest
 import sqlite3
 from pathlib import Path
 from datetime import datetime, timezone
-from soi_frame_extractor.data.importer import import_csv
-from soi_frame_extractor.db.session_db import create_session_db
-from soi_frame_extractor.models.models import ColumnMappings
+from deep_framex.data.importer import import_csv
+from deep_framex.db.session_db import create_session_db
+from deep_framex.models.core import ColumnMappings
 
 
 # Fixture: fresh in-memory DB for each test.
