@@ -1,4 +1,4 @@
-from soi_frame_extractor.utils.coordinates import normalize_longitude, decimal_to_ref, decimal_to_dms
+from deep_framex.utils.coordinates import normalize_longitude, decimal_to_ref, decimal_to_dms
 import pytest
 
 def test_normalize_longitude():

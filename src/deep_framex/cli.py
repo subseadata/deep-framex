@@ -1,15 +1,15 @@
-"""Command-line interface for soi-frame-extractor
+"""Command-line interface for deep-framex
 
 Entry point: __main__.py calls main(), which builds the argument parser
 and runs the extraction pipeline.
 
 Usage:
-    soi-extract <source> --spec <yaml> [--output <dir>]
+    deep-framex <source> --spec <yaml> [--output <dir>]
 
     <source>  — path to a directory of video files, or one or more explicit
                 video file paths.  Passed directly to discover_videos, so the
                 same rules apply: directory OR list; single bare file raises
-                ValueError (wrap it: soi-extract /path/to/file.mp4).
+                ValueError (wrap it: deep-framex /path/to/file.mp4).
 """
 
 import argparse
@@ -74,7 +74,7 @@ def main() -> None:
     """
     # TODO: if probe or dry-run modes are added later, migrate to subparsers
     parser = argparse.ArgumentParser(
-        prog="soi-extract",
+        prog="deep-framex",
         description="Extract annotated frames from deep sea video.",
     )
     parser.add_argument(
@@ -82,7 +82,7 @@ def main() -> None:
         nargs="+",
         help=(
             "Directory of video files, or one or more explicit video file paths. "
-            "For a single file, wrap it in a list: soi-extract /path/to/file.mp4 --spec ..."
+            "For a single file, wrap it in a list: deep-framex /path/to/file.mp4 --spec ..."
         ),
     )
     parser.add_argument(

@@ -1,8 +1,8 @@
 import pytest
 import warnings
 from datetime import datetime, timezone
-from soi_frame_extractor.planning.planner import interpolate_sensor
-from soi_frame_extractor.db.session_db import create_session_db
+from deep_framex.planning.planner import interpolate_sensor
+from deep_framex.db.session_db import create_session_db
 
 
 # Fixture: in-memory DB with a sensor_readings table and a few rows of depth data.

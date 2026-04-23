@@ -137,7 +137,7 @@ def parse_filename_template(
         For files produced with filename_template: "{dive_id}_{utc}.jpg":
 
             from pathlib import Path
-            from soi_frame_extractor.utils.timestamps import parse_filename_template
+            from deep_framex.utils.timestamps import parse_filename_template
 
             files = [
                 (p.name, parse_filename_template(p, "{dive_id}_{utc}"))
@@ -201,10 +201,10 @@ def parse_file_list_csv(
 
     Example usage:
         from pathlib import Path
-        from soi_frame_extractor.utils.timestamps import parse_file_list_csv
-        from soi_frame_extractor.metadata.assemble import assemble_biigle_records
-        from soi_frame_extractor.metadata.biigle import write_biigle_manifest
-        from soi_frame_extractor.models.core import ColumnMappings
+        from deep_framex.utils.timestamps import parse_file_list_csv
+        from deep_framex.metadata.assemble import assemble_biigle_records
+        from deep_framex.metadata.biigle import write_biigle_manifest
+        from deep_framex.models.core import ColumnMappings
 
         files = parse_file_list_csv(Path("file_list.csv"))
 

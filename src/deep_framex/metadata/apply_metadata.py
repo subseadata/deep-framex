@@ -17,7 +17,7 @@ Any sensor column or project_metadata key not present in FIELD_REGISTRY is
 written to XMP under a user-configurable custom namespace.  The namespace
 URI and prefix are taken from ExtractionSpec (xmp_namespace_uri,
 xmp_namespace_prefix) and default to
-"https://soi-frame-extractor.org/xmp/v1/" / "sfe".
+"https://deep-framex.org/xmp/v1/" / "dfx".
 
 Coordinate conventions:
     Input:   decimal degrees; longitude accepts both −180/+180 and 0–360.

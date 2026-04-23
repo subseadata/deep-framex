@@ -2,7 +2,7 @@ import pytest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from soi_frame_extractor.utils.timestamps import (
+from deep_framex.utils.timestamps import (
     _template_to_regex,
     _parse_utc_string,
     parse_filename_template,

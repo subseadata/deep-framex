@@ -142,8 +142,8 @@ def output_frames(
     frames: list[ExtractedFrame],
     output_dir: Path,
     filename_template: str | None = None,
-    xmp_namespace_uri: str = "https://soi-frame-extractor.org/xmp/v1/",
-    xmp_namespace_prefix: str = "sfe",
+    xmp_namespace_uri: str = "https://deep-framex.org/xmp/v1/",
+    xmp_namespace_prefix: str = "dfx",
 ) -> list[tuple[Path, FrameMetadata]]:
     """Write a list of extracted frames to disk and return paths with metadata.
 

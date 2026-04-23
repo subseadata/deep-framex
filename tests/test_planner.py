@@ -1,5 +1,5 @@
-from soi_frame_extractor.planning.planner import _intersect_windows, _sample_timestamps
-from soi_frame_extractor.models.core import TimePeriod
+from deep_framex.planning.planner import _intersect_windows, _sample_timestamps
+from deep_framex.models.core import TimePeriod
 from datetime import datetime, timezone
 
 def test_intersect_windows():
