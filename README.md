@@ -1,4 +1,4 @@
-# soi-frame-extractor
+# deep-framex
 
 Frame extraction library for deep sea video. Frames are self-describing and metadata is embedded directly into image files so context travels with the frame into any downstream system.
 
