@@ -6,7 +6,7 @@ Frame extraction library for deep sea video. Frames are self-describing and meta
 
 **uv:**
 ```
-uv pip install git+https://github.com/schmidtocean/deep-framex
+uv pip install git+https://github.com/subseadata/deep-framex
 ```
 
 **pip:**
