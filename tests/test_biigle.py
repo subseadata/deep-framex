@@ -3,8 +3,8 @@ import pytest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from soi_frame_extractor.metadata.biigle import _build_biigle_row, write_biigle_manifest
-from soi_frame_extractor.models.core import FrameMetadata
+from deep_framex.metadata.biigle import _build_biigle_row, write_biigle_manifest
+from deep_framex.models.core import FrameMetadata
 
 
 def make_meta(utc, snapshot=None, project_metadata=None):

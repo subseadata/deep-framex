@@ -1,4 +1,4 @@
-# Example extraction spec for soi-frame-extractor
+# Example extraction spec for deep-framex
 #
 # Every rule must have interval_s.
 # Optional rule arguments: periods, constraints
@@ -17,7 +17,7 @@
 #                (each rule contributes independently; duplicates removed)
 #
 # Usage:
-#   soi-extract <source> --spec extraction_spec.yaml [--data sensors.csv] [--output ./frames]
+#   deep-framex <source> --spec extraction_spec.yaml [--data sensors.csv] [--output ./frames]
 
 
 # ---------------------------------------------------------------------------
@@ -140,9 +140,9 @@ rules:
 #   license:      "CC BY 4.0"
 #
 #   # IPTC fields — written to IPTC layer
-#   credit:       "Schmidt Ocean Institute"
+#   credit:       "Your Organization"
 #   source:       "ROV SuBastian"
-#   copyright:    "© 2025 Schmidt Ocean Institute"
+#   copyright:    "© 2025 Your Organization"
 #   caption:      "Description of image content"
 #
 #   # EXIF fields — written to EXIF layer
@@ -309,5 +309,5 @@ rules:
 # written to XMP under a custom namespace.  Set URI and prefix here, or omit
 # to use the defaults shown.
 #
-# xmp_namespace_uri:    https://soi-frame-extractor.org/xmp/v1/
-# xmp_namespace_prefix: sfe
+# xmp_namespace_uri:    https://deep-framex.org/xmp/v1/
+# xmp_namespace_prefix: dfx

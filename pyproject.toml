@@ -1,5 +1,5 @@
 [project]
-name = "soi-frame-extractor"
+name = "deep-framex"
 version = "0.1.0"
 description = "Library for frame extraction from deep sea video"
 readme = "README.md"
@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-soi-extract = "soi_frame_extractor.cli:main"
+deep-framex = "deep_framex.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]

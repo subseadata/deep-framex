@@ -6,13 +6,13 @@ Frame extraction library for deep sea video. Frames are self-describing and meta
 
 **uv:**
 ```
-uv pip install git+https://github.com/schmidtocean/soi-frame-extractor
+uv pip install git+https://github.com/schmidtocean/deep-framex
 ```
 
 **pip:**
 ```
 git clone <repo>
-cd soiFrameExtractor
+cd deep-framex
 pip install -e .
 ```
 
@@ -27,7 +27,7 @@ See the notebooks for worked examples:
 ## Command-line use
 
 ```
-soi-extract <source> --spec <yaml> [--data <csv>] [--output <dir>]
+deep-framex <source> --spec <yaml> [--data <csv>] [--output <dir>]
 ```
 
 | Argument | Description |
@@ -112,8 +112,8 @@ Any other name is written to XMP only. Only the columns you list are loaded, eve
 | `interpolation_window` | `2` | Sensor rows to use on each side when interpolating values |
 | `stream_output` | `false` | Write each frame immediately instead of buffering per video |
 | `max_workers` | `1` | Worker processes for extraction; `>1` extracts multiple videos in parallel |
-| `xmp_namespace_uri` | `https://soi-frame-extractor.org/xmp/v1/` | URI for the custom XMP namespace |
-| `xmp_namespace_prefix` | `sfe` | Prefix for the custom XMP namespace |
+| `xmp_namespace_uri` | `https://deep-framex.org/xmp/v1/` | URI for the custom XMP namespace |
+| `xmp_namespace_prefix` | `dfx` | Prefix for the custom XMP namespace |
 
 
 **Highly Reccommended:** always include `{utc}` in your filename template. The planner guarantees unique timestamps, so `{utc}` guarantees unique filenames. Templates that omit it may silently overwrite frames.
@@ -136,7 +136,7 @@ Each extraction run produces:
 Each pipeline stage is a standalone function. Import what you need:
 
 ```python
-from soi_frame_extractor import (
+from deep_framex import (
     extract,
     spec_from_file, spec_from_dict,
     discover_videos, create_video_session,
@@ -150,7 +150,7 @@ from soi_frame_extractor import (
 **Full run from a YAML spec:**
 
 ```python
-from soi_frame_extractor import extract
+from deep_framex import extract
 
 extract(
     spec_path=Path("spec.yaml"),
@@ -210,7 +210,7 @@ write_biigle_manifest([item for r in all_results for item in r], output_dir)
 To build a BIIGLE-compatible CSV from a set of already-extracted images without re-running the full pipeline:
 
 ```python
-from soi_frame_extractor import (
+from deep_framex import (
     parse_filename_template, assemble_biigle_records,
     write_biigle_manifest, ColumnMappings,
 )
@@ -238,7 +238,7 @@ write_biigle_manifest(records, Path("output/"))
 ## Structure
 
 ```
-src/soi_frame_extractor/
+src/deep_framex/
 ├── models/          # data models and metadata field routing registry
 ├── config/          # YAML spec parsing and video file discovery
 ├── data/            # CSV import
@@ -269,7 +269,7 @@ src/soi_frame_extractor/
 **Metadata layers per frame:**
 - **EXIF**: GPS latitude, longitude, altitude (depth), timestamp, camera make/model
 - **IPTC**: credit, source, copyright, caption, date/time created
-- **XMP**: creation date, plus all sensor and project fields not routed to EXIF or IPTC, written under a configurable namespace (default `sfe:`)
+- **XMP**: creation date, plus all sensor and project fields not routed to EXIF or IPTC, written under a configurable namespace (default `dfx:`)
 
 ## User Story Functionality (I want to...)
 - extract frames from video at a defined time interval *(e.g., 1 every 5 seconds, 1 every 10 seconds)*

@@ -1,5 +1,5 @@
 import pytest
-from soi_frame_extractor.config.spec_parser import spec_from_dict
+from deep_framex.config.spec_parser import spec_from_dict
 from datetime import datetime, timezone
 
 
