@@ -1,6 +1,6 @@
 [project]
 name = "deep-framex"
-version = "0.1.0"
+version = "0.1.0-beta"
 description = "Library for frame extraction from deep sea video"
 readme = "README.md"
 requires-python = ">=3.12"
