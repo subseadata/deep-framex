@@ -18,11 +18,35 @@ pip install -e .
 
 ## Quickstart
 
-See the notebooks for worked examples:
+Worked examples live in `notebooks/`, in two flavours — pick whichever matches how you like to work.
 
-- **`notebooks/ExtractionExamples.ipynb`** — basic extraction: fixed intervals, sensor data, output files
-- **`notebooks/AdvancedExtraction.ipynb`** — time windows, sensor constraints, multi-rule specs, planning, parallel extraction
-- more to come!
+### marimo notebooks (guided workshop)
+
+`notebooks/marimo/` is a hands-on workshop that runs deep-framex end to end. It ships with its own sample video (`clip.mp4`) and sensor log (`sensor.csv`), so there's nothing to bring — clone the repo and go. Work through them in order:
+
+| Notebook | What it covers |
+|---|---|
+| `01-gettingStarted.py` | Confirm your environment and dependencies are ready |
+| `02-simpleExtraction.py` | Write a minimal YAML spec and extract frames from the sample clip |
+| `03-examineFrames.py` | Inspect the output — image previews, EXIF, iFDO, and BIIGLE metadata |
+| `04-advancedExtraction.py` | Restrict extraction to UTC time windows with varied intervals |
+| `05-sensorExtraction.py` | Add sensor data and extract by environmental constraints (e.g. depth) |
+
+Launch one with:
+
+```
+uv run marimo edit notebooks/marimo/01-gettingStarted.py
+```
+
+`uv run` builds the project environment (marimo and the plotting libraries are included as dependencies), so no separate install step is needed.
+
+### Jupyter notebooks (library reference)
+
+`notebooks/jupyter/` shows the same features from a plain-Python, bring-your-own-video angle:
+
+- **`ExtractionExamples.ipynb`** — basic extraction: fixed intervals, sensor data, output files
+- **`AdvancedExtraction.ipynb`** — time windows, sensor constraints, multi-rule specs, planning, parallel extraction
+- **`PipelineConnections.ipynb`** — handing frames and metadata off to downstream tools (BIIGLE, MARIMBA)
 
 ## Command-line use
 
