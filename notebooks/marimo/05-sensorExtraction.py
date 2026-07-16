@@ -156,11 +156,16 @@ def _(mo):
     mo.md("""
     ## Running the Extraction
 
-    To extract frames from it using the spec we just saved, we run a single command. If you're comfortable with it, open a terminal, navigate to the directory where we are running this notebook, and try to run this from your command line directly instead of using the button. **Notice the added flag for including sensor data.**
+    To extract frames from it using the spec we just saved, we run a single command. Here again we have a button in the notebook, but if you were running this in a terminal environment you could use the following. **Notice the added flag for including sensor data.**
 
-    ```
+    ```bash
     uv run deep-framex clip.mp4 --spec extraction_spec.yaml --data sensor.csv
     ```
+
+    Remember, in order to perform sensor-aware extractions, you must 
+    1. Have timestamped csv sensor files
+    2. Add a constriaints block and a sensor mappings block to your YAML file
+    3. Call deep-framex with the --data flag and pass in the sensor file.
 
     """)
     return
@@ -179,7 +184,7 @@ def _(mo, run_button, subprocess):
     mo.stop(not run_button.value)
 
     result = subprocess.run(
-        ["uv", "run", "deep-framex", "clip.mp4", "--spec", "extraction_spec.yaml", "--data", "sensor.csv"],
+        ["rm", "-r", "frames/", "&&", "uv", "run", "deep-framex", "clip.mp4", "--spec", "extraction_spec.yaml", "--data", "sensor.csv"],
         capture_output=True,
         text=True,
     )

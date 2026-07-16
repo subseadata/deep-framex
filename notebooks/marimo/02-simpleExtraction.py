@@ -43,7 +43,9 @@ def _(mo):
 
     If we run deep-framex with this input, it tells deep-framex to extract one frame every 10 seconds from the whole video file (or all the videos in the extraction directory - more on that later).
 
-    In the next cell, we can use a form to write and modify our **Extraction Spec** file, but you could also edit it in your favorite text editor.
+    In the next cell, we can use a form to write and modify our **Extraction Spec** file. If you were working in your local terminal environment, you can edit YAML files in any text editor.
+
+    Confirm the YAML file below and press `Submit` to save the file to `extraction_spec.yaml` in our current working directory.
     """)
     return
 
@@ -88,7 +90,7 @@ def _(mo):
 
     Great! Now that we have a valid YAML spec file, we can run extraction on a video file.
 
-    For this demo, there is already a video file named `clip.mp4` inside the notebook directory. To extract frames from it using the spec we just saved, we run a single command:
+    For this demo, there is already a video file named `clip.mp4` inside the notebook directory. To extract frames from it using the spec we just saved, we would run a single command in our local terminal:
 
     ```
     uv run deep-framex clip.mp4 --spec extraction_spec.yaml
@@ -96,7 +98,7 @@ def _(mo):
 
     That's the whole thing. It says: *run deep-framex on `clip.mp4`, using the rules in `extraction_spec.yaml`.*
 
-    You could type that line into a terminal yourself. But you don't have to — press the button below and this notebook will run it for you.
+    You could type that line into a terminal yourself. But you don't have to — press the button below and this notebook will run it for you here in the notebook directory.
     """)
     return
 
@@ -114,7 +116,7 @@ def _(mo, run_button, subprocess):
     mo.stop(not run_button.value)
 
     result = subprocess.run(
-        ["uv", "run", "deep-framex", "clip.mp4", "--spec", "extraction_spec.yaml"],
+        ["rm", "-r", "frames/", "&&", "uv", "run", "deep-framex", "clip.mp4", "--spec", "extraction_spec.yaml"],
         capture_output=True,
         text=True,
     )

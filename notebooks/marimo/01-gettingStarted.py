@@ -16,7 +16,7 @@ def _(mo):
     mo.md("""
     # Getting Started
 
-    This notebook is here to confirm that you have a working environment for future notebooks. Since we'll be working with notebooks for the majority of the workshop, a few key terms are defined below.
+    This notebook is here to confirm that you have a working environment for future notebooks. If this is your first time working with notebooks, a few key terms are defined below.
     """)
     return
 
@@ -38,7 +38,9 @@ def _(mo):
 
     This cell is also a markdown cell, and it is here to tell you what the next cell will do.
 
-    The following cell contains python code. You can run the cell by pressing the arrow at the top of the cell or by clicking in the cell and pressing Ctrl+Enter. Try it now with the next cell. If you see an output block appear below the code text that says "hello world" then everything is working perfectly.
+    The following cell contains python code. If the notebook is running in app mode, you may not see any code.
+
+    You can run the cell by pressing the arrow at the top of the cell or by clicking in the cell and pressing Ctrl+Enter. Try it now with the next cell. If you see an output block appear below the code text that says "hello world" then everything is working perfectly.
     """)
     return
 
@@ -56,7 +58,7 @@ def _(mo):
 
     The next code block confirms the availability of the packages necessary for running deep-framex. This includes python packages named "av", "numpy", etc. The full list is in the code block below.
 
-    Run it the same way as the cell we just ran. If you see a green "You're ready!" message, your environment is set up correctly.
+    Run it the same way as the cell we just ran. If you see a green "You're ready!" message, your environment is set up correctly. If the notebook is running in app mode, the cell might have already run and you will see the message.
     """)
     return
 

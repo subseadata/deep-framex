@@ -20,9 +20,9 @@ def _(mo):
     mo.md("""
     # Examine Output 
 
-    With our frames successfull extracted, let's examine the output. Navigate to the folder where these notebooks have been running and look for two things. First should be your `extraction_spec.yaml` file and second should be a directory called `frames/`
+    With our frames successfull extracted, let's examine the output.
 
-    Inside you will find a frame or two, plus a few other files. You can open the frames with whatever image viewing tool you like.
+    If you were running locally, you would find these files in the directory where you ran deep-framex. In our notebook environment, we load them automatically from the `frames/` directory that was created during extraction.
 
     Below we will examine the frame metadata to understand what is output beyond the image.
 

@@ -33,7 +33,8 @@ def _(mo):
     mo.md("""
     ## Expanding our YAML file
 
-    There's a lot of options in the full spec, but that's only for the sake of flexibility. You will probably not need to use them all at the same time, and it's much easier to approach by building slowly piece by piece.
+    There are a lot of options in the full spec example. You will probably not need to use them all at the same time, and it's much easier to approach by building slowly piece by piece.
+
 
     Recall our simple **Extraction Spec** from earlier:
 
@@ -44,7 +45,7 @@ def _(mo):
 
     We are going to modify this file and add some more precise time constraints for frame extraction. To do this, we need to know what time the video starts so we can index appropriately.
 
-    **Video file start time (UTC) must be known for deep-framex to work.** In our demo clip, the start time is encoded in the metadata: `2024-07-14T21:59:20Z`
+    **Video file start time (UTC) must be known for deep-framex to work.** In our demo clip, the start time is encoded in the metadata: `2024-07-14T21:59:20Z` and the video is 10 seconds long.
 
     Let's modify `extraction_spec.yaml` below to extract one frame every 2 seconds from `T21:59:20` to `T21:59:26` and one frame every one second from `T21:59:28` to `T21:59:30`.
 
@@ -102,11 +103,12 @@ def _(mo):
     mo.md("""
     ## Running the Extraction
 
-    To extract frames from it using the spec we just saved, we run a single command. If you're comfortable with it, open a terminal, navigate to the directory where we are running this notebook, and try to run this from your command line directly instead of using the button.
+    To extract frames from it using the spec we just saved, we run a single command. As before, this is the command you would run in your local terminal, but in the notebook environment we can just click the button below.
 
-    ```
+    ```bash
     uv run deep-framex clip.mp4 --spec extraction_spec.yaml
     ```
+    Since the frames are extracted to the same directory as before, we can return to notebook 03, refresh, and see the results of our extraction.
 
     """)
     return
@@ -125,7 +127,7 @@ def _(mo, run_button, subprocess):
     mo.stop(not run_button.value)
 
     result = subprocess.run(
-        ["uv", "run", "deep-framex", "clip.mp4", "--spec", "extraction_spec.yaml"],
+        ["rm", "-r", "frames/", "&&", "uv", "run", "deep-framex", "clip.mp4", "--spec", "extraction_spec.yaml"],
         capture_output=True,
         text=True,
     )
