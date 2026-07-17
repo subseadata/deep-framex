@@ -11,9 +11,26 @@ def _():
     import yaml
     import pandas as pd
     import matplotlib.pyplot as plt
+    import html as _html
+    from textwrap import dedent
 
+    def yaml_block(code):
+        # Render YAML as a code block via mo.Html so it bypasses marimo's
+        # markdown preprocessor, which otherwise rewrites the indentation of
+        # any line starting with "- " (YAML sequence items) and breaks the spec.
+        body = _html.escape(dedent(code).strip("\n"))
+        style = (
+            "border:1px solid light-dark(rgba(0,0,0,0.15),rgba(255,255,255,0.18));"
+            "background:light-dark(rgba(255,255,255,0.6),rgba(255,255,255,0.05));"
+            "border-radius:8px;padding:0.6rem 0.9rem;margin:0.5rem 0;overflow-x:auto;"
+        )
+        return mo.Html(
+            f'<div class="language-yaml codehilite" style="{style}">'
+            f'<pre style="margin:0;background:transparent"><span></span>'
+            f'<code>{body}</code></pre></div>'
+        )
 
-    return mo, subprocess, yaml
+    return mo, subprocess, yaml, yaml_block
 
 
 @app.cell(hide_code=True)
@@ -81,40 +98,41 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
+def _(mo, yaml_block):
+    mo.vstack([
+        mo.md("""
     ## Expanding our YAML file
 
     Recall our simple **Extraction Spec** from earlier:
-
-    ```yaml
+        """),
+        yaml_block("""
     rules:
       - interval_s: 10.0
-    ```
-
+        """),
+        mo.md("""
     Let's modify `extraction_spec.yaml` below to extract one frame per second while the depth sensor reading is greater than 400m. This requires two additions to our YAML file.
 
     First are the extraction rules we want to apply to our video using the sensor data:
-
-    ```yaml
+        """),
+        yaml_block("""
     rules:
-    - interval_s: 1.0
-      constraints:
-      - column: depth
-        min: 400 
-    ```
-
+      - interval_s: 1.0
+        constraints:
+        - column: depth
+          min: 400
+        """),
+        mo.md("""
     The second is a mappings block that tells deep-framex what columns in our csv mean. Let's map our `time` and `depth_m` columns in our csv as:
-
-    ```yaml
+        """),
+        yaml_block("""
     mappings:
-      timestamp:   time
-      depth:       depth_m
-    ```
-
+      timestamp: time
+      depth: depth_m
+        """),
+        mo.md("""
     Our column name from the sensor file is on the right, and the names deep-framex uses are on the left. How did we know this? It's in the example `extraction_spec.yaml` and in the README on the repository.
-
-    """)
+        """),
+    ])
     return
 
 

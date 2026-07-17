@@ -9,8 +9,26 @@ def _():
     import marimo as mo
     import subprocess
     import yaml
+    import html as _html
+    from textwrap import dedent
 
-    return mo, subprocess, yaml
+    def yaml_block(code):
+        # Render YAML as a code block via mo.Html so it bypasses marimo's
+        # markdown preprocessor, which otherwise rewrites the indentation of
+        # any line starting with "- " (YAML sequence items) and breaks the spec.
+        body = _html.escape(dedent(code).strip("\n"))
+        style = (
+            "border:1px solid light-dark(rgba(0,0,0,0.15),rgba(255,255,255,0.18));"
+            "background:light-dark(rgba(255,255,255,0.6),rgba(255,255,255,0.05));"
+            "border-radius:8px;padding:0.6rem 0.9rem;margin:0.5rem 0;overflow-x:auto;"
+        )
+        return mo.Html(
+            f'<div class="language-yaml codehilite" style="{style}">'
+            f'<pre style="margin:0;background:transparent"><span></span>'
+            f'<code>{body}</code></pre></div>'
+        )
+
+    return mo, subprocess, yaml, yaml_block
 
 
 @app.cell(hide_code=True)
@@ -26,19 +44,20 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
+def _(mo, yaml_block):
+    mo.vstack([
+        mo.md("""
     ## What is a YAML file?
 
     The **Extraction Spec** is described as a YAML file. YAML files are structured text files that use indents, hyphens and other syntax to relate different pieces of information. We only need a text editor to create them, and we designate them as YAML files by saving them with the file extension `.yaml`
 
     Let's look at the simple YAML **Extraction Spec** below.
-
-    ```yaml
+        """),
+        yaml_block("""
     rules:
-        - interval_s: 10.0
-    ```
-
+      - interval_s: 10.0
+        """),
+        mo.md("""
     That's it, that's the whole file.
 
     If we run deep-framex with this input, it tells deep-framex to extract one frame every 10 seconds from the whole video file (or all the videos in the extraction directory - more on that later).
@@ -46,7 +65,8 @@ def _(mo):
     In the next cell, we can use a form to write and modify our **Extraction Spec** file. If you were working in your local terminal environment, you can edit YAML files in any text editor.
 
     Confirm the YAML file below and press `Submit` to save the file to `extraction_spec.yaml` in our current working directory.
-    """)
+        """),
+    ])
     return
 
 

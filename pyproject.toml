@@ -25,6 +25,11 @@ dev = ["pytest>=8.0"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.marimo.display]
+# Force light mode for all workshop notebooks so the pastel theme-*.css
+# backgrounds render as intended, regardless of the reader's OS/marimo theme.
+theme = "light"
+
 [build-system]
 requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"

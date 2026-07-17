@@ -9,8 +9,26 @@ def _():
     import marimo as mo
     import subprocess
     import yaml
+    import html as _html
+    from textwrap import dedent
 
-    return mo, subprocess, yaml
+    def yaml_block(code):
+        # Render YAML as a code block via mo.Html so it bypasses marimo's
+        # markdown preprocessor, which otherwise rewrites the indentation of
+        # any line starting with "- " (YAML sequence items) and breaks the spec.
+        body = _html.escape(dedent(code).strip("\n"))
+        style = (
+            "border:1px solid light-dark(rgba(0,0,0,0.15),rgba(255,255,255,0.18));"
+            "background:light-dark(rgba(255,255,255,0.6),rgba(255,255,255,0.05));"
+            "border-radius:8px;padding:0.6rem 0.9rem;margin:0.5rem 0;overflow-x:auto;"
+        )
+        return mo.Html(
+            f'<div class="language-yaml codehilite" style="{style}">'
+            f'<pre style="margin:0;background:transparent"><span></span>'
+            f'<code>{body}</code></pre></div>'
+        )
+
+    return mo, subprocess, yaml, yaml_block
 
 
 @app.cell(hide_code=True)
@@ -29,20 +47,21 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
+def _(mo, yaml_block):
+    mo.vstack([
+        mo.md("""
     ## Expanding our YAML file
 
     There are a lot of options in the full spec example. You will probably not need to use them all at the same time, and it's much easier to approach by building slowly piece by piece.
 
 
     Recall our simple **Extraction Spec** from earlier:
-
-    ```yaml
+        """),
+        yaml_block("""
     rules:
-        - interval_s: 10.0
-    ```
-
+      - interval_s: 10.0
+        """),
+        mo.md("""
     We are going to modify this file and add some more precise time constraints for frame extraction. To do this, we need to know what time the video starts so we can index appropriately.
 
     **Video file start time (UTC) must be known for deep-framex to work.** In our demo clip, the start time is encoded in the metadata: `2024-07-14T21:59:20Z` and the video is 10 seconds long.
@@ -50,18 +69,18 @@ def _(mo):
     Let's modify `extraction_spec.yaml` below to extract one frame every 2 seconds from `T21:59:20` to `T21:59:26` and one frame every one second from `T21:59:28` to `T21:59:30`.
 
     Modify the spec to handle the 2 second interval extraction period as
-
-    ```yaml
+        """),
+        yaml_block("""
     rules:
-        - interval_s: 2.0
-          periods:
-            - start: "2024-07-14T21:59:20Z"
-              end: "2024-07-14T21:59:26Z"
-    ```
-
+      - interval_s: 2.0
+        periods:
+          - start: "2024-07-14T21:59:20Z"
+            end: "2024-07-14T21:59:26Z"
+        """),
+        mo.md("""
     Knowing this, add the half second interval extraction period yourself.
-
-    """)
+        """),
+    ])
     return
 
 
