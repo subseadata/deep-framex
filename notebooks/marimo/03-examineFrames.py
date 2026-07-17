@@ -37,12 +37,10 @@ def _(mo):
     # A refresh button whose value changes on each click. Any cell that reads
     # from frames/ references this, so clicking it re-runs those cells and
     # re-reads the directory — no page refresh needed.
-    reload_button = mo.ui.refresh(label="🔄 Reload frames")
+    reload_button = mo.ui.refresh(label="Reload frames")
     mo.vstack([
         mo.md(
-            "Just ran an extraction in another notebook (2, 4, or 5)? "
-            "Click **Reload frames** to pull in the new output — "
-            "no need to refresh the page."
+            "Reload frames after running a new extraction:"
         ),
         reload_button,
     ])
