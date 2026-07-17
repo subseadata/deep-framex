@@ -12,7 +12,7 @@ def _():
     from pathlib import Path
     from PIL import Image, ExifTags
 
-    return ExifTags, Image, Path, csv, mo
+    return ExifTags, Image, Path, csv, json, mo
 
 
 @app.cell(hide_code=True)
@@ -33,7 +33,26 @@ def _(mo):
 
 
 @app.cell
-def _(Path, mo):
+def _(mo):
+    # A refresh button whose value changes on each click. Any cell that reads
+    # from frames/ references this, so clicking it re-runs those cells and
+    # re-reads the directory — no page refresh needed.
+    reload_button = mo.ui.refresh(label="🔄 Reload frames")
+    mo.vstack([
+        mo.md(
+            "Just ran an extraction in another notebook (2, 4, or 5)? "
+            "Click **Reload frames** to pull in the new output — "
+            "no need to refresh the page."
+        ),
+        reload_button,
+    ])
+    return (reload_button,)
+
+
+@app.cell
+def _(Path, mo, reload_button):
+    reload_button  # re-run this cell whenever the reload button is clicked
+
     frames_dir = Path("frames")
     images = sorted(
         p for p in frames_dir.glob("*") if p.suffix.lower() in {".jpg", ".jpeg"}
@@ -109,7 +128,9 @@ def _(ExifTags, Image, filename, mo):
 
 
 @app.cell
-def _(csv, mo):
+def _(csv, mo, reload_button):
+    reload_button  # re-run this cell whenever the reload button is clicked
+
     with open("frames/biigle_metadata.csv", newline="") as f:
         biigle_rows = list(csv.DictReader(f))
 
@@ -123,7 +144,9 @@ def _(csv, mo):
     return
 
 @app.cell
-def _(mo):
+def _(json, mo, reload_button):
+    reload_button  # re-run this cell whenever the reload button is clicked
+
     with open("frames/ifdo.json", "r") as j:
         ifdo = json.load(j)
 
