@@ -145,8 +145,12 @@ def _(mo, run_button, subprocess):
     # Wait until the button is clicked before running anything.
     mo.stop(not run_button.value)
 
+    # Clear any frames from a previous run so results don't mix together.
+    # "-f" makes this a no-op (no error) when frames/ doesn't exist yet.
+    subprocess.run(["rm", "-rf", "frames/"])
+
     result = subprocess.run(
-        ["rm", "-r", "frames/", "&&", "uv", "run", "deep-framex", "clip.mp4", "--spec", "extraction_spec.yaml"],
+        ["uv", "run", "deep-framex", "clip.mp4", "--spec", "extraction_spec.yaml"],
         capture_output=True,
         text=True,
     )
