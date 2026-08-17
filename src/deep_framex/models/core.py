@@ -132,6 +132,7 @@ class ExtractionSpec(CustomBaseModel):
     interpolation_window: int = 2                   # number of sensor rows to use on each side when interpolating
     stream_output: bool = False                     # write each frame to disk immediately instead of buffering per video
     max_workers: int = 1                            # worker processes for extraction; 1 = sequential, >1 = parallel
+    video_start_times: dict[str, datetime] = {}     # filename -> UTC start time override for unclocked video
 
 
 class FrameSpec(CustomBaseModel):

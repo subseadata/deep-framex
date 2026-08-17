@@ -62,6 +62,19 @@ rules:
 
 
 # ---------------------------------------------------------------------------
+# VIDEO START TIMES (optional)
+# ---------------------------------------------------------------------------
+# Each video's UTC start time is normally read from its creation_time tag.
+# Use this block for footage that is not properly clocked — the tag is
+# missing, or present but wrong.  Keys are video filenames (basename only),
+# values are ISO 8601 UTC timestamps (Z or +00:00).
+#
+# video_start_times:
+#   "dive_001.mp4": "2025-11-15T10:00:00Z"
+#   "dive_002.mp4": "2025-11-15T10:10:00Z"
+
+
+# ---------------------------------------------------------------------------
 # MAPPINGS (required only if a sensor CSV is provided)
 # ---------------------------------------------------------------------------
 #

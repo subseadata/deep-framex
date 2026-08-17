@@ -1,2 +1,6 @@
 archive/
 __pycache__/
+*.egg-info/
+sampleData/
+frames/
+__marimo__/

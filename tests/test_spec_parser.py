@@ -146,3 +146,34 @@ def test_invalid_datetime_raises():
 def test_missing_mappings_timestamp_raises():
     with pytest.raises(ValueError):
         spec_from_dict({"rules": [{"interval_s": 10.0}], "mappings": {"latitude": "lat"}})
+
+
+# video_start_times: filename -> ISO 8601 UTC start time override.
+def test_video_start_times_parsed():
+    spec = spec_from_dict({
+        "rules": [{"interval_s": 10.0}],
+        "video_start_times": {
+            "dive_001.mp4": "2025-11-15T10:00:00Z",
+            "dive_002.mp4": "2025-11-15T10:10:00+00:00",
+        },
+    })
+    assert spec.video_start_times["dive_001.mp4"] == datetime(2025, 11, 15, 10, 0, 0, tzinfo=timezone.utc)
+    assert spec.video_start_times["dive_002.mp4"] == datetime(2025, 11, 15, 10, 10, 0, tzinfo=timezone.utc)
+
+
+# video_start_times omitted -> empty dict (no override).
+def test_video_start_times_default_empty():
+    spec = spec_from_dict({"rules": [{"interval_s": 10.0}]})
+    assert spec.video_start_times == {}
+
+
+# video_start_times value must be a valid ISO 8601 datetime.
+def test_video_start_times_invalid_datetime_raises():
+    with pytest.raises(ValueError):
+        spec_from_dict({"rules": [{"interval_s": 10.0}], "video_start_times": {"a.mp4": "not-a-time"}})
+
+
+# video_start_times value must be UTC-aware.
+def test_video_start_times_naive_datetime_raises():
+    with pytest.raises(ValueError):
+        spec_from_dict({"rules": [{"interval_s": 10.0}], "video_start_times": {"a.mp4": "2025-11-15T10:00:00"}})

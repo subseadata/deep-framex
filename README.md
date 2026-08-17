@@ -138,11 +138,24 @@ Any other name is written to XMP only. Only the columns you list are loaded, eve
 | `max_workers` | `1` | Worker processes for extraction; `>1` extracts multiple videos in parallel |
 | `xmp_namespace_uri` | `https://deep-framex.org/xmp/v1/` | URI for the custom XMP namespace |
 | `xmp_namespace_prefix` | `dfx` | Prefix for the custom XMP namespace |
+| `video_start_times` | — | Map of video filename → ISO 8601 UTC start time, for footage whose `creation_time` tag is missing or wrong |
 
 
 **Highly Reccommended:** always include `{utc}` in your filename template. The planner guarantees unique timestamps, so `{utc}` guarantees unique filenames. Templates that omit it may silently overwrite frames.
 
 When using `max_workers > 1`, set `stream_output: true`. Without it, each worker buffers a full video's decoded frames in memory before writing (≈1.4 GB per worker at 4K/10 s).
+
+### Manually setting video start times
+
+Each video's UTC start time is normally read from its container `creation_time` tag. For footage that is not properly clocked — the tag is missing, or present but wrong — set the start time yourself. Keys are video filenames (basename only); values are ISO 8601 UTC timestamps.
+
+```yaml
+video_start_times:
+  "dive_001.mp4": "2025-11-15T10:00:00Z"
+  "dive_002.mp4": "2025-11-15T10:10:00Z"
+```
+
+A listed file is clocked from this block instead of its tag; unlisted files are probed as usual.
 
 ## Output
 
@@ -188,7 +201,7 @@ extract(
 
 ```python
 spec    = spec_from_file("spec.yaml")
-session = create_video_session(discover_videos(Path("video/")))
+session = create_video_session(discover_videos(Path("video/"), spec.video_start_times))
 conn    = create_session_db()
 import_csv(csv_path, conn, spec.mappings)
 plans   = plan(spec, session, conn)
