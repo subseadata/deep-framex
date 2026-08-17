@@ -150,7 +150,7 @@ def extract(
         raise ValueError("Provide either spec_path= or spec=")
 
     # --- Stage 2 & 3: discover videos and assemble session ---
-    video_files = discover_videos(video_source)
+    video_files = discover_videos(video_source, resolved_spec.video_start_times)
     session = create_video_session(video_files)
 
     # --- Stage 4: init session database (used only during planning) ---

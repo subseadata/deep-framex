@@ -91,6 +91,7 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
         xmp_namespace_uri:    str | None  (model default if absent)
         xmp_namespace_prefix: str | None  (model default if absent)
         stream_output:        bool        (default False)
+        video_start_times:    dict[str, datetime]  (filename -> UTC start override)
     """
     if not raw.get('rules'):
         raise ValueError("'rules' key is missing or empty")
@@ -232,6 +233,21 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
             f"'stream_output' must be boolean true/false, got {raw_stream_output!r}"
         )
 
+    # video_start_times (optional) — filename -> ISO 8601 UTC start time override
+    video_start_times = {}
+    for name, value in (raw.get('video_start_times') or {}).items():
+        try:
+            start = datetime.fromisoformat(str(value))
+        except ValueError as e:
+            raise ValueError(
+                f"'video_start_times'[{name!r}]: invalid datetime: {e}"
+            ) from e
+        if start.tzinfo is None:
+            raise ValueError(
+                f"'video_start_times'[{name!r}]: must be UTC-aware (use Z or +00:00)"
+            )
+        video_start_times[name] = start
+
     # optional top-level fields — only pass XMP overrides if explicitly set,
     # so the model defaults apply when the user omits them
     kwargs: dict = {}
@@ -249,5 +265,6 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
         interpolation_window=interpolation_window,
         stream_output=stream_output,
         max_workers=max_workers,
+        video_start_times=video_start_times,
         **kwargs,
     )
