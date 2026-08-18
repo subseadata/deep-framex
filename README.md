@@ -26,19 +26,22 @@ Worked examples live in `notebooks/`, in two flavours — pick whichever matches
 
 | Notebook | What it covers |
 |---|---|
-| `01-gettingStarted.py` | Confirm your environment and dependencies are ready |
-| `02-simpleExtraction.py` | Write a minimal YAML spec and extract frames from the sample clip |
-| `03-examineFrames.py` | Inspect the output — image previews, EXIF, iFDO, and BIIGLE metadata |
-| `04-advancedExtraction.py` | Restrict extraction to UTC time windows with varied intervals |
-| `05-sensorExtraction.py` | Add sensor data and extract by environmental constraints (e.g. depth) |
+| `00-getting-started.py` | Confirm your environment and dependencies are ready |
+| `01-simple-extraction.py` | Write a minimal YAML spec and extract frames from the sample clip |
+| `02-examine-frames.py` | Inspect the output — image previews, EXIF, iFDO, and BIIGLE metadata |
+| `03-advanced-extraction.py` | Restrict extraction to UTC time windows with varied intervals |
+| `04-sensor-extraction.py` | Add sensor data and extract by environmental constraints (e.g. depth) |
+| `05-spec-review.py` | Recap of the spec format and what extraction takes in and puts out |
+| `06-video-start.py` | Supply start times for videos that have no `creation_time` metadata |
 
-Launch one with:
+Launch one from inside the notebook directory:
 
 ```
-uv run marimo edit notebooks/marimo/01-gettingStarted.py
+cd notebooks/marimo
+uv run marimo edit 00-getting-started.py
 ```
 
-`uv run` builds the project environment (marimo and the plotting libraries are included as dependencies), so no separate install step is needed.
+The notebooks read `clip.mp4`, `sensor.csv` and write `frames/` using paths relative to the working directory, so run them from `notebooks/marimo/` — `uv` still finds the project by walking up to the repo root. `uv run` builds the project environment (marimo and the plotting libraries are included as dependencies), so no separate install step is needed.
 
 ### Jupyter notebooks (library reference)
 

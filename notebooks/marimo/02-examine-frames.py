@@ -124,7 +124,7 @@ def _(ExifTags, Image, filename, mo):
 def _(csv, mo, reload_button):
     reload_button  # re-run this cell whenever the reload button is clicked
 
-    with open("frames/biigle_metadata.csv", newline="") as f:
+    with open("frames/biigle_metadata.csv", newline="", encoding="utf-8") as f:
         biigle_rows = list(csv.DictReader(f))
 
     mo.vstack([
@@ -140,7 +140,7 @@ def _(csv, mo, reload_button):
 def _(json, mo, reload_button):
     reload_button  # re-run this cell whenever the reload button is clicked
 
-    with open("frames/ifdo.json", "r") as j:
+    with open("frames/ifdo.json", "r", encoding="utf-8") as j:
         ifdo = json.load(j)
 
     mo.vstack([
