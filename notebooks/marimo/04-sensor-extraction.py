@@ -7,6 +7,7 @@ app = marimo.App(width="medium", css_file="theme-04.css")
 @app.cell
 def _():
     import marimo as mo
+    import shutil
     import subprocess
     import yaml
     import pandas as pd
@@ -30,7 +31,7 @@ def _():
             f'<code>{body}</code></pre></div>'
         )
 
-    return mo, subprocess, yaml, yaml_block
+    return mo, shutil, subprocess, yaml, yaml_block
 
 
 @app.cell(hide_code=True)
@@ -49,7 +50,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
 
-    with open("sensor.csv") as c:
+    with open("sensor.csv", encoding="utf-8") as c:
         csv_text = c.read()
 
     mo.md(f"""
@@ -164,7 +165,7 @@ def _(mo, yaml):
 def _(form, mo):
     if form.value:
         contents = yaml.safe_load(form.value["text"])
-        with open(form.value["filename"], "w") as f:
+        with open(form.value["filename"], "w", encoding="utf-8") as f:
             yaml.safe_dump(contents, f, sort_keys=False)
         mo.md(f"Saved to `{form.value["filename"]}`")
     return
@@ -197,18 +198,19 @@ def _(mo):
 
 
 @app.cell
-def _(mo, run_button, subprocess):
+def _(mo, run_button, shutil, subprocess):
     # Wait until the button is clicked before running anything.
     mo.stop(not run_button.value)
 
     # Clear any frames from a previous run so results don't mix together.
-    # "-f" makes this a no-op (no error) when frames/ doesn't exist yet.
-    subprocess.run(["rm", "-rf", "frames/"])
+    # ignore_errors makes this a no-op when frames/ doesn't exist yet.
+    shutil.rmtree("frames", ignore_errors=True)
 
     result = subprocess.run(
         ["uv", "run", "deep-framex", "clip.mp4", "--spec", "extraction_spec.yaml", "--data", "sensor.csv"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
 
     output = result.stdout + result.stderr
