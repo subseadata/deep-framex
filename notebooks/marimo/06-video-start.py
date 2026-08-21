@@ -161,7 +161,7 @@ def _(form, mo, yaml):
     return
 
 
-@app.cell(hide_code=true)
+@app.cell(hide_code=True)
 def _(mo):
     mo.md("""
     ## Something New!
@@ -176,6 +176,7 @@ def _(mo):
 
     This helps when you want to extract from multiple sequential videos. Constraints all still work the same as before - e.g., if you specify extraction intervals over a limited time period that doesn't cover all the video files, it won't extract over clips outside those times.
     """)
+    return
 
 
 @app.cell
