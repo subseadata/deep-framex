@@ -102,8 +102,8 @@ def _(mo, pd):
     ctd = pd.read_csv("ex2503_rovctd.csv", parse_dates=["utc_time"])
 
     # The three clips cover 20:24:59 -> 20:39:59 on 2025-04-11.
-    VIDEO_START = pd.Timestamp("2025-04-11T20:24:59")
-    VIDEO_END = pd.Timestamp("2025-04-11T20:39:59")
+    VIDEO_START = pd.Timestamp("2025-04-11T20:24:59Z")
+    VIDEO_END = pd.Timestamp("2025-04-11T20:39:59Z")
     in_video = ctd[(ctd["utc_time"] >= VIDEO_START) & (ctd["utc_time"] <= VIDEO_END)]
 
     mo.vstack([
