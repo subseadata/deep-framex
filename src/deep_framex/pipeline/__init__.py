@@ -165,7 +165,10 @@ def extract(
                 "Add mappings (including 'timestamp') or omit --data."
             )
         if csv_path is not None and resolved_spec.mappings is not None:
-            dataset = import_csv(csv_path, conn, resolved_spec.mappings)
+            dataset = import_csv(
+                csv_path, conn, resolved_spec.mappings,
+                resolved_spec.sensor_time_shift, resolved_spec.sensor_start_time,
+            )
             sensor_keys = dataset.columns
 
         # --- Stage 6: validate filename template ---

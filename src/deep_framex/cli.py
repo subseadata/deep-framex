@@ -97,7 +97,10 @@ def cmd_plan(args: argparse.Namespace) -> int:
         conn = create_session_db()
 
         if args.data:
-            import_csv(Path(args.data), conn, spec.mappings)
+            import_csv(
+                Path(args.data), conn, spec.mappings,
+                spec.sensor_time_shift, spec.sensor_start_time,
+            )
 
         plans = plan(spec, session, conn)
         close_session_db(conn)
