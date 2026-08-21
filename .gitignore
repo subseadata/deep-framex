@@ -3,5 +3,7 @@ __pycache__/
 *.egg-info/
 sampleData/
 frames/
+frames-*/
 __marimo__/
 _plan_*.yaml
+_spec_*.yaml
