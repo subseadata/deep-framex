@@ -1,6 +1,6 @@
 import pytest
 from deep_framex.config.spec_parser import spec_from_dict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 # Minimum valid input: only rules + interval_s required.
@@ -177,3 +177,57 @@ def test_video_start_times_invalid_datetime_raises():
 def test_video_start_times_naive_datetime_raises():
     with pytest.raises(ValueError):
         spec_from_dict({"rules": [{"interval_s": 10.0}], "video_start_times": {"a.mp4": "2025-11-15T10:00:00"}})
+
+
+# sensor_time_shift: signed HH:MM:SS string -> timedelta.
+def test_sensor_time_shift_parsed():
+    spec = spec_from_dict({"rules": [{"interval_s": 10.0}], "sensor_time_shift": "01:30:15"})
+    assert spec.sensor_time_shift == timedelta(hours=1, minutes=30, seconds=15)
+
+
+# A leading '-' makes the shift negative.
+def test_sensor_time_shift_negative():
+    spec = spec_from_dict({"rules": [{"interval_s": 10.0}], "sensor_time_shift": "-00:00:45"})
+    assert spec.sensor_time_shift == timedelta(seconds=-45)
+
+
+# Both sensor alignment keys omitted -> None (no correction).
+def test_sensor_alignment_default_none():
+    spec = spec_from_dict({"rules": [{"interval_s": 10.0}]})
+    assert spec.sensor_time_shift is None
+    assert spec.sensor_start_time is None
+
+
+# sensor_time_shift must be three colon-separated integers.
+def test_sensor_time_shift_invalid_raises():
+    with pytest.raises(ValueError):
+        spec_from_dict({"rules": [{"interval_s": 10.0}], "sensor_time_shift": "90 minutes"})
+
+
+# An unquoted HH:MM:SS in YAML reaches the parser as a sexagesimal int — reject it
+# rather than silently treating 5400 as a shift.
+def test_sensor_time_shift_unquoted_yaml_raises():
+    with pytest.raises(ValueError):
+        spec_from_dict({"rules": [{"interval_s": 10.0}], "sensor_time_shift": 5400})
+
+
+# sensor_start_time: ISO 8601 UTC time for the earliest sensor reading.
+def test_sensor_start_time_parsed():
+    spec = spec_from_dict({"rules": [{"interval_s": 10.0}], "sensor_start_time": "2025-11-15T10:00:00Z"})
+    assert spec.sensor_start_time == datetime(2025, 11, 15, 10, 0, 0, tzinfo=timezone.utc)
+
+
+# sensor_start_time must be UTC-aware.
+def test_sensor_start_time_naive_raises():
+    with pytest.raises(ValueError):
+        spec_from_dict({"rules": [{"interval_s": 10.0}], "sensor_start_time": "2025-11-15T10:00:00"})
+
+
+# The two alignment keys express conflicting intents — setting both is an error.
+def test_sensor_shift_and_start_time_together_raises():
+    with pytest.raises(ValueError):
+        spec_from_dict({
+            "rules": [{"interval_s": 10.0}],
+            "sensor_time_shift": "00:01:00",
+            "sensor_start_time": "2025-11-15T10:00:00Z",
+        })
