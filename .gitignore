@@ -4,3 +4,4 @@ __pycache__/
 sampleData/
 frames/
 __marimo__/
+_plan_*.yaml
