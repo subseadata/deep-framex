@@ -204,8 +204,8 @@ def test_sensor_time_shift_invalid_raises():
         spec_from_dict({"rules": [{"interval_s": 10.0}], "sensor_time_shift": "90 minutes"})
 
 
-# An unquoted HH:MM:SS in YAML reaches the parser as a sexagesimal int — reject it
-# rather than silently treating 5400 as a shift.
+# YAML resolves an unquoted, non-zero-padded duration (1:30:00) to a sexagesimal
+# int, so the parser can be handed 5400 — reject it rather than treat it as a shift.
 def test_sensor_time_shift_unquoted_yaml_raises():
     with pytest.raises(ValueError):
         spec_from_dict({"rules": [{"interval_s": 10.0}], "sensor_time_shift": 5400})

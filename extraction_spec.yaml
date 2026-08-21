@@ -81,7 +81,9 @@ rules:
 # frames would otherwise get sensor values read from the wrong moment.
 #
 # sensor_time_shift adds a signed HH:MM:SS duration to every sensor timestamp.
-# QUOTE THE VALUE — unquoted, YAML reads 01:30:00 as the integer 5400.
+# QUOTE THE VALUE — unquoted, YAML reads a non-zero-padded duration such as
+# 1:30:00 as the sexagesimal integer 5400.  That is rejected rather than
+# guessed at, but quoting saves you the failed run.
 #
 # sensor_time_shift: "-01:30:00"    # sensor clock ran 90 min ahead; wind it back
 #

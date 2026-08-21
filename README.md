@@ -165,7 +165,7 @@ sensor_time_shift: "-01:30:00"
 sensor_start_time: "2025-11-15T10:00:00Z"
 ```
 
-`sensor_time_shift` adds a signed `HH:MM:SS` duration to every sensor timestamp. **Quote the value** — unquoted, YAML reads `01:30:00` as the integer 5400 rather than a string.
+`sensor_time_shift` adds a signed `HH:MM:SS` duration to every sensor timestamp. **Quote the value.** Unquoted, YAML reads a non-zero-padded duration like `1:30:00` as the sexagesimal integer 5400; deep-framex rejects that rather than guessing what you meant, but it costs you a run.
 
 `sensor_start_time` places the *earliest* sensor reading at the time you give and shifts every other reading by the same amount. It anchors on the earliest reading, not on the first row of the CSV, so the file does not need to be sorted.
 

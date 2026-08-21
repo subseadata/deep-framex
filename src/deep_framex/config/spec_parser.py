@@ -37,8 +37,8 @@ Expected YAML shape:
                                                      # (the two are mutually exclusive)
 
 All datetimes must be ISO 8601 with explicit UTC offset (Z or +00:00).
-Durations are signed HH:MM:SS strings — quote them, or YAML reads them as
-sexagesimal integers.
+Durations are signed HH:MM:SS strings — quote them, or YAML reads a
+non-zero-padded value such as 1:30:00 as the sexagesimal integer 5400.
 """
 
 from datetime import datetime, timedelta
@@ -57,10 +57,10 @@ from ..models.core import (
 def _parse_hms(value) -> timedelta:
     """Parse a signed HH:MM:SS duration string into a timedelta.
 
-    A leading '-' or '+' is allowed.  Note that an unquoted HH:MM:SS in YAML is
-    read as a sexagesimal integer rather than a string, so values must be
-    quoted in the spec file; an unquoted value arrives here as an int and is
-    rejected with the format error below.
+    A leading '-' or '+' is allowed.  Values should be quoted in the spec file:
+    YAML resolves a non-zero-padded duration such as 1:30:00 to the sexagesimal
+    integer 5400, which arrives here as an int and is rejected with the format
+    error below rather than silently applying a wrong shift.
 
     Args:
         value: signed HH:MM:SS string, e.g. "01:30:00" or "-00:00:45".
