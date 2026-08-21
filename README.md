@@ -18,35 +18,27 @@ pip install -e .
 
 ## Quickstart
 
-Worked examples live in `notebooks/`, in two flavours — pick whichever matches how you like to work.
-
-### marimo notebooks (guided workshop)
-
-`notebooks/marimo/` is a hands-on workshop that runs deep-framex end to end. It ships with its own sample video (`clip.mp4`) and sensor log (`sensor.csv`), so there's nothing to bring — clone the repo and go. Work through them in order:
+Worked examples live in `notebooks/marimo/` — a hands-on workshop that runs deep-framex end to end. It ships with its own sample video (`clip.mp4`) and sensor log (`sensor.csv`), so there's nothing to bring — clone the repo and go. Work through them in order:
 
 | Notebook | What it covers |
 |---|---|
-| `01-gettingStarted.py` | Confirm your environment and dependencies are ready |
-| `02-simpleExtraction.py` | Write a minimal YAML spec and extract frames from the sample clip |
-| `03-examineFrames.py` | Inspect the output — image previews, EXIF, iFDO, and BIIGLE metadata |
-| `04-advancedExtraction.py` | Restrict extraction to UTC time windows with varied intervals |
-| `05-sensorExtraction.py` | Add sensor data and extract by environmental constraints (e.g. depth) |
+| `00-getting-started.py` | Confirm your environment and dependencies are ready |
+| `01-simple-extraction.py` | Write a minimal YAML spec and extract frames from the sample clip |
+| `02-examine-frames.py` | Inspect the output — image previews, EXIF, iFDO, and BIIGLE metadata |
+| `03-advanced-extraction.py` | Restrict extraction to UTC time windows with varied intervals |
+| `04-sensor-extraction.py` | Add sensor data and extract by environmental constraints (e.g. depth) |
+| `05-spec-review.py` | Recap of the spec format — rules, intervals, periods, constraints |
+| `06-video-start.py` | Extract across a multi-video session, setting UTC start times by hand |
 
 Launch one with:
 
 ```
-uv run marimo edit notebooks/marimo/01-gettingStarted.py
+uv run marimo edit notebooks/marimo/00-getting-started.py
 ```
 
 `uv run` builds the project environment (marimo and the plotting libraries are included as dependencies), so no separate install step is needed.
 
-### Jupyter notebooks (library reference)
-
-`notebooks/jupyter/` shows the same features from a plain-Python, bring-your-own-video angle:
-
-- **`ExtractionExamples.ipynb`** — basic extraction: fixed intervals, sensor data, output files
-- **`AdvancedExtraction.ipynb`** — time windows, sensor constraints, multi-rule specs, planning, parallel extraction
-- **`PipelineConnections.ipynb`** — handing frames and metadata off to downstream tools (BIIGLE, MARIMBA)
+`06-video-start.py` downloads a few larger clips (~75 MB each) on demand via a button in the notebook; the rest run entirely on the bundled sample files.
 
 ## Command-line use
 
