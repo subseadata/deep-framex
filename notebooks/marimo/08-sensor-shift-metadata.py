@@ -12,7 +12,6 @@ def _():
     import glob
     import os
     import pandas as pd
-    import piexif
     import xml.etree.ElementTree as ET
     from PIL import Image
     import html as _html
@@ -34,7 +33,7 @@ def _():
             f'<code>{body}</code></pre></div>'
         )
 
-    return ET, Image, glob, mo, os, pd, piexif, subprocess, yaml, yaml_block
+    return ET, Image, glob, mo, os, pd, subprocess, yaml, yaml_block
 
 
 @app.cell(hide_code=True)
@@ -127,7 +126,7 @@ def _(mo, yaml_block):
 
     Same video, same interval, same mappings — extracted twice. The only difference between the two specs is one line.
 
-    Note `depth: pressure_dbar`. The CTD reports pressure in decibars and deep-framex's `depth` field expects metres. They're within a couple of percent near the surface and diverge with depth, so this is a convenience, not a conversion. If you need true depth, convert pressure properly first (it needs latitude) and map that column instead.
+    Note `pressure: pressure_dbar`. The CTD reports pressure in decibars, so that is what we call it. deep-framex has a `depth` field that expects metres and routes to standard tags, but pressure is not depth — converting between them needs latitude — and a channel named for what the instrument actually measured beats one named for what we wish it measured. Any mapping name deep-framex doesn't recognise is still carried through in full.
         """),
         yaml_block("""
     rules:
@@ -140,7 +139,7 @@ def _(mo, yaml_block):
 
     mappings:
       timestamp: utc_time
-      depth: pressure_dbar
+      pressure: pressure_dbar
       temperature: temperature_c
       turbidity: turbidity_ftu
       orp: orp
@@ -189,7 +188,7 @@ def _(mo, run_button, shift_input, subprocess, yaml):
         },
         "mappings": {
             "timestamp": "utc_time",
-            "depth": "pressure_dbar",
+            "pressure": "pressure_dbar",
             "temperature": "temperature_c",
             "turbidity": "turbidity_ftu",
             "orp": "orp",
@@ -233,19 +232,16 @@ def _(mo):
     mo.md("""
     ## Reading the metadata back out
 
-    We could just compare the `ifdo.json` manifests, but those are written from the same in-memory values the extractor used, so they'd prove nothing about the files. Instead we open the JPEGs and read what is actually embedded in them:
+    We could just compare the `ifdo.json` manifests, but those are written from the same in-memory values the extractor used, so they'd prove nothing about the files. Instead we open the JPEGs and read what is actually embedded in them.
 
-    - **depth** from the EXIF `GPSAltitude` tag (with `GPSAltitudeRef = 1`, below sea level)
-    - **temperature, turbidity, orp** from the custom XMP namespace, `dfx:*`
-
-    Depth gets an EXIF home because it's a registered field with somewhere standard to go. The other three have no standard tag, so they fall through to XMP. That routing is `FIELD_REGISTRY` in `models/core.py`.
+    All four of our channels — pressure, temperature, turbidity, orp — live in the custom XMP namespace as `dfx:*`. None of them is a field the image standards have an opinion about, so none gets a dedicated tag. `FIELD_REGISTRY` in `models/core.py` lists the ones that do: map a column to `latitude`, `longitude`, or `depth` and it lands in EXIF GPS tags instead. Everything else falls through to XMP, which is the point of having a custom namespace.
 
     """)
     return
 
 
 @app.cell
-def _(ET, Image, glob, os, pd, piexif, runs_ok):
+def _(ET, Image, glob, os, pd, runs_ok):
     # Depend on runs_ok so this cell waits for the extractions.
     runs_ok
 
@@ -253,12 +249,6 @@ def _(ET, Image, glob, os, pd, piexif, runs_ok):
 
     def read_frame_metadata(path):
         values = {"frame": os.path.basename(path)}
-
-        gps = piexif.load(path).get("GPS", {})
-        if piexif.GPSIFD.GPSAltitude in gps:
-            _num, _den = gps[piexif.GPSIFD.GPSAltitude]
-            values["depth"] = _num / _den
-
         packet = Image.open(path).info["xmp"].decode()
         description = ET.fromstring(packet).find(".//{*}Description")
         for element in description:
@@ -273,7 +263,7 @@ def _(ET, Image, glob, os, pd, piexif, runs_ok):
     unshifted = read_run("frames-unshifted")
     shifted_run = read_run("frames-shifted")
 
-    CHANNELS = ["depth", "temperature", "turbidity", "orp"]
+    CHANNELS = ["pressure", "temperature", "turbidity", "orp"]
     comparison = pd.DataFrame(index=unshifted.index)
     for _channel in CHANNELS:
         comparison[f"{_channel}"] = unshifted[_channel]
@@ -303,7 +293,7 @@ def _(CHANNELS, comparison, mo, shift_input, unshifted):
     |---|---|---|
     {chr(10).join(_rows)}
 
-    A `{shift_input.value}` shift on this dive is **small** — in places it rounds away to nothing. That isn't the feature failing. It's the vehicle: it was station-keeping near bottom, so five seconds of sensor time barely moves any of these channels. Compare the two columns above — the shift-induced change is a fraction of the range the channel covers anyway.
+    A `{shift_input.value}` shift on this dive is **small**. Every frame moved, but look at the two columns above: the change the shift caused is a small fraction of the range each channel covers anyway. That isn't the feature underperforming — it's the vehicle. It was station-keeping near bottom, so five seconds of sensor time barely moves any of these channels.
 
     Which is the uncomfortable part. **A misalignment is only as visible as the thing you're measuring is fast.** On a hovering vehicle in stable water, a wrong sensor clock produces metadata that looks perfectly reasonable and is quietly wrong. On a vehicle flying a transect, or crossing a thermocline, or on a winch, the same five seconds would be glaring.
 
