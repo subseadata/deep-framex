@@ -3,4 +3,16 @@ __pycache__/
 *.egg-info/
 sampleData/
 frames/
+frames-*/
 __marimo__/
+_plan_*.yaml
+_spec_*.yaml
+_*.csv
+
+# Notebooks 07/08 and their CTD data — land on feature/notebooks, not here
+notebooks/marimo/07-sensor-time.py
+notebooks/marimo/08-sensor-shift-metadata.py
+notebooks/marimo/theme-07.css
+notebooks/marimo/theme-08.css
+notebooks/marimo/cnv_to_csv.py
+notebooks/marimo/ex2503_rovctd.csv

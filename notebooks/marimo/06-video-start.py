@@ -1,7 +1,7 @@
 import marimo
 
 __generated_with = "0.23.13"
-app = marimo.App(width="medium", css_file="theme-01.css")
+app = marimo.App(width="medium", css_file="theme-06.css")
 
 
 @app.cell
@@ -177,6 +177,7 @@ def _(mo):
 
     This helps when you want to extract from multiple sequential videos. Constraints all still work the same as before - e.g., if you specify extraction intervals over a limited time period that doesn't cover all the video files, it won't extract over clips outside those times.
     """)
+    return
 
 
 @app.cell

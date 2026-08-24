@@ -75,6 +75,31 @@ rules:
 
 
 # ---------------------------------------------------------------------------
+# SENSOR TIME ALIGNMENT (optional)
+# ---------------------------------------------------------------------------
+# Use these when the sensor logger's clock disagreed with the video clock, so
+# frames would otherwise get sensor values read from the wrong moment.
+#
+# sensor_time_shift adds a signed HH:MM:SS duration to every sensor timestamp.
+# QUOTE THE VALUE — unquoted, YAML reads a non-zero-padded duration such as
+# 1:30:00 as the sexagesimal integer 5400.  That is rejected rather than
+# guessed at, but quoting saves you the failed run.
+#
+# sensor_time_shift: "-01:30:00"    # sensor clock ran 90 min ahead; wind it back
+#
+# sensor_start_time places the EARLIEST sensor reading at the time you give and
+# shifts every other reading by the same amount.  It anchors on the earliest
+# reading, not the first CSV row, so the file need not be sorted.
+#
+# sensor_start_time: "2025-11-15T10:00:00Z"
+#
+# The two are alternative ways to say the same thing — setting both is an
+# error.  Both preserve the spacing between readings; neither corrects clock
+# drift.  Check an alignment with --plan before extracting: it prints the
+# interpolated sensor values per planned frame without decoding any.
+
+
+# ---------------------------------------------------------------------------
 # MAPPINGS (required only if a sensor CSV is provided)
 # ---------------------------------------------------------------------------
 #

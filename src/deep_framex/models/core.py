@@ -133,6 +133,8 @@ class ExtractionSpec(CustomBaseModel):
     stream_output: bool = False                     # write each frame to disk immediately instead of buffering per video
     max_workers: int = 1                            # worker processes for extraction; 1 = sequential, >1 = parallel
     video_start_times: dict[str, datetime] = {}     # filename -> UTC start time override for unclocked video
+    sensor_time_shift: timedelta | None = None      # add this duration to every sensor timestamp
+    sensor_start_time: datetime | None = None       # set the earliest sensor reading to this UTC time
 
 
 class FrameSpec(CustomBaseModel):

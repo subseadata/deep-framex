@@ -16,12 +16,15 @@ and are not stored anywhere.
 
 Timestamps are parsed as ISO 8601 UTC and stored as Unix epoch floats for
 efficient range queries during planning.  All sensor values must be numeric.
+
+If the sensor logger's clock was offset from the video clock, time_shift or
+start_time realign the imported timestamps — see import_csv.
 """
 
 import csv
 import re
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ..db.session_db import init_sensor_table
@@ -32,6 +35,8 @@ def import_csv(
     path: Path,
     conn: sqlite3.Connection,
     mappings: ColumnMappings,
+    time_shift: timedelta | None = None,
+    start_time: datetime | None = None,
 ) -> ImportedDataset:
     """Load a CSV file into the session database sensor_readings table.
 
@@ -45,6 +50,16 @@ def import_csv(
         conn:     active session database connection.
         mappings: ColumnMappings from the ExtractionSpec.  Only columns
                   listed here are imported; everything else is ignored.
+        time_shift: duration added to every imported timestamp.  Use this when
+                  the sensor clock ran ahead of or behind the video clock by a
+                  known amount.  May be negative.
+        start_time: UTC time to place the earliest reading at.  Every timestamp
+                  is shifted by the same delta, so the spacing between readings
+                  is preserved.  Note this anchors on the earliest reading, not
+                  on the first CSV row — row order in the file is not assumed.
+
+    time_shift and start_time are alternative ways to express the same
+    correction; the spec parser rejects specs that set both.
 
     Returns:
         ImportedDataset with canonical column names, row count, and UTC
@@ -112,6 +127,19 @@ def import_csv(
 
     if not rows:
         raise ValueError(f"CSV file {path} contains no data rows")
+
+    # Realign the sensor clock to the video clock.  Applied once here, after the
+    # whole file is read, so start_time can anchor on the earliest reading — and
+    # so everything downstream (constraint windows, interpolation) reads already
+    # corrected timestamps and needs no knowledge of the shift.
+    delta = 0.0
+    if time_shift is not None:
+        delta = time_shift.total_seconds()
+    elif start_time is not None:
+        delta = start_time.timestamp() - min(timestamps)
+    if delta:
+        rows = [(ts + delta, *vals) for ts, *vals in rows]
+        timestamps = [ts + delta for ts in timestamps]
 
     placeholders = ", ".join(["?"] * (1 + len(canonical_to_csv)))
     conn.executemany(f"INSERT INTO sensor_readings VALUES ({placeholders})", rows)

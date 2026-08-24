@@ -18,11 +18,7 @@ pip install -e .
 
 ## Quickstart
 
-Worked examples live in `notebooks/`, in two flavours — pick whichever matches how you like to work.
-
-### marimo notebooks (guided workshop)
-
-`notebooks/marimo/` is a hands-on workshop that runs deep-framex end to end. It ships with its own sample video (`clip.mp4`) and sensor log (`sensor.csv`), so there's nothing to bring — clone the repo and go. Work through them in order:
+Worked examples live in `notebooks/marimo/` — a hands-on workshop that runs deep-framex end to end. It ships with its own sample video (`clip.mp4`) and sensor log (`sensor.csv`), so there's nothing to bring — clone the repo and go. Work through them in order:
 
 | Notebook | What it covers |
 |---|---|
@@ -37,19 +33,12 @@ Worked examples live in `notebooks/`, in two flavours — pick whichever matches
 Launch one from inside the notebook directory:
 
 ```
-cd notebooks/marimo
-uv run marimo edit 00-getting-started.py
+uv run marimo edit notebooks/marimo/00-getting-started.py
 ```
 
 The notebooks read `clip.mp4`, `sensor.csv` and write `frames/` using paths relative to the working directory, so run them from `notebooks/marimo/` — `uv` still finds the project by walking up to the repo root. `uv run` builds the project environment (marimo and the plotting libraries are included as dependencies), so no separate install step is needed.
 
-### Jupyter notebooks (library reference)
-
-`notebooks/jupyter/` shows the same features from a plain-Python, bring-your-own-video angle:
-
-- **`ExtractionExamples.ipynb`** — basic extraction: fixed intervals, sensor data, output files
-- **`AdvancedExtraction.ipynb`** — time windows, sensor constraints, multi-rule specs, planning, parallel extraction
-- **`PipelineConnections.ipynb`** — handing frames and metadata off to downstream tools (BIIGLE, MARIMBA)
+`06-video-start.py` downloads a few larger clips (~75 MB each) on demand via a button in the notebook; the rest run entirely on the bundled sample files.
 
 ## Command-line use
 
@@ -142,6 +131,8 @@ Any other name is written to XMP only. Only the columns you list are loaded, eve
 | `xmp_namespace_uri` | `https://deep-framex.org/xmp/v1/` | URI for the custom XMP namespace |
 | `xmp_namespace_prefix` | `dfx` | Prefix for the custom XMP namespace |
 | `video_start_times` | — | Map of video filename → ISO 8601 UTC start time, for footage whose `creation_time` tag is missing or wrong |
+| `sensor_time_shift` | — | Signed `"HH:MM:SS"` added to every sensor timestamp, for a sensor clock that ran ahead or behind |
+| `sensor_start_time` | — | ISO 8601 UTC time to place the earliest sensor reading at; all readings shift by the same amount |
 
 
 **Highly Reccommended:** always include `{utc}` in your filename template. The planner guarantees unique timestamps, so `{utc}` guarantees unique filenames. Templates that omit it may silently overwrite frames.
@@ -159,6 +150,32 @@ video_start_times:
 ```
 
 A listed file is clocked from this block instead of its tag; unlisted files are probed as usual.
+
+### Aligning sensor time to video time
+
+If the sensor logger's clock disagreed with the video clock, every frame gets sensor values read from the wrong moment. Correct it with one of two keys — whichever matches what you know:
+
+```yaml
+# The sensor clock ran 90 minutes ahead. Wind it back.
+sensor_time_shift: "-01:30:00"
+```
+
+```yaml
+# You know when the first sensor reading was actually taken.
+sensor_start_time: "2025-11-15T10:00:00Z"
+```
+
+`sensor_time_shift` adds a signed `HH:MM:SS` duration to every sensor timestamp. **Quote the value.** Unquoted, YAML reads a non-zero-padded duration like `1:30:00` as the sexagesimal integer 5400; deep-framex rejects that rather than guessing what you meant, but it costs you a run.
+
+`sensor_start_time` places the *earliest* sensor reading at the time you give and shifts every other reading by the same amount. It anchors on the earliest reading, not on the first row of the CSV, so the file does not need to be sorted.
+
+The two are alternative ways to say the same thing; setting both is an error. Both preserve the spacing between readings — neither corrects clock drift.
+
+Use `--plan` to check an alignment before extracting anything. It prints the interpolated sensor values for every planned frame without decoding a single one:
+
+```
+deep-framex video/ --spec spec.yaml --data sensors.csv --plan
+```
 
 ## Output
 

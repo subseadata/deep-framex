@@ -32,10 +32,16 @@ Expected YAML shape:
     xmp_namespace_uri:    https://example.org/myproject/ # optional
     xmp_namespace_prefix: myproj                         # optional
 
+    sensor_time_shift: "-01:30:00"                   # optional; shift all sensor timestamps
+    sensor_start_time: "2024-01-15T10:00:00Z"        # optional; anchor the earliest reading
+                                                     # (the two are mutually exclusive)
+
 All datetimes must be ISO 8601 with explicit UTC offset (Z or +00:00).
+Durations are signed HH:MM:SS strings — quote them, or YAML reads a
+non-zero-padded value such as 1:30:00 as the sexagesimal integer 5400.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import yaml
@@ -46,6 +52,35 @@ from ..models.core import (
     ExtractionSpec,
     TimePeriod,
 )
+
+
+def _parse_hms(value) -> timedelta:
+    """Parse a signed HH:MM:SS duration string into a timedelta.
+
+    A leading '-' or '+' is allowed.  Values should be quoted in the spec file:
+    YAML resolves a non-zero-padded duration such as 1:30:00 to the sexagesimal
+    integer 5400, which arrives here as an int and is rejected with the format
+    error below rather than silently applying a wrong shift.
+
+    Args:
+        value: signed HH:MM:SS string, e.g. "01:30:00" or "-00:00:45".
+
+    Returns:
+        timedelta, negative if the string was signed negative.
+
+    Raises:
+        ValueError: if the value is not three colon-separated integers.
+    """
+    text = str(value)
+    sign = -1 if text.startswith("-") else 1
+    try:
+        hours, minutes, seconds = (int(part) for part in text.lstrip("+-").split(":"))
+    except ValueError:
+        raise ValueError(
+            f"'sensor_time_shift' must be a quoted HH:MM:SS string with an optional "
+            f"leading sign (e.g. \"01:30:00\" or \"-00:00:45\"), got {value!r}"
+        ) from None
+    return sign * timedelta(hours=hours, minutes=minutes, seconds=seconds)
 
 
 def spec_from_file(path: Path) -> ExtractionSpec:
@@ -92,6 +127,8 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
         xmp_namespace_prefix: str | None  (model default if absent)
         stream_output:        bool        (default False)
         video_start_times:    dict[str, datetime]  (filename -> UTC start override)
+        sensor_time_shift:    timedelta | None  (signed HH:MM:SS duration)
+        sensor_start_time:    datetime | None   (UTC time for the earliest reading)
     """
     if not raw.get('rules'):
         raise ValueError("'rules' key is missing or empty")
@@ -248,6 +285,29 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
             )
         video_start_times[name] = start
 
+    # sensor_time_shift / sensor_start_time (optional) — align sensor time to video time.
+    # Mutually exclusive: they express conflicting intents, and silently preferring one
+    # would misalign the sensor data without telling the user.
+    sensor_time_shift = None
+    if raw.get('sensor_time_shift') is not None:
+        sensor_time_shift = _parse_hms(raw['sensor_time_shift'])
+
+    sensor_start_time = None
+    if raw.get('sensor_start_time') is not None:
+        try:
+            sensor_start_time = datetime.fromisoformat(str(raw['sensor_start_time']))
+        except ValueError as e:
+            raise ValueError(f"'sensor_start_time': invalid datetime: {e}") from e
+        if sensor_start_time.tzinfo is None:
+            raise ValueError("'sensor_start_time': must be UTC-aware (use Z or +00:00)")
+
+    if sensor_time_shift is not None and sensor_start_time is not None:
+        raise ValueError(
+            "'sensor_time_shift' and 'sensor_start_time' are mutually exclusive — "
+            "use a shift to move the sensor clock by a known amount, or a start time "
+            "to anchor the earliest reading. Remove one."
+        )
+
     # optional top-level fields — only pass XMP overrides if explicitly set,
     # so the model defaults apply when the user omits them
     kwargs: dict = {}
@@ -266,5 +326,7 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
         stream_output=stream_output,
         max_workers=max_workers,
         video_start_times=video_start_times,
+        sensor_time_shift=sensor_time_shift,
+        sensor_start_time=sensor_start_time,
         **kwargs,
     )
