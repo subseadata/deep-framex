@@ -7,8 +7,6 @@ app = marimo.App(width="medium", css_file="theme-05.css")
 @app.cell
 def _():
     import marimo as mo
-    import subprocess
-    import yaml
     import html as _html
     from textwrap import dedent
 
@@ -28,7 +26,7 @@ def _():
             f'<code>{body}</code></pre></div>'
         )
 
-    return mo, subprocess, yaml, yaml_block
+    return mo, yaml_block
 
 
 @app.cell(hide_code=True)

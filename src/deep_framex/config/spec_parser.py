@@ -99,7 +99,7 @@ def spec_from_file(path: Path) -> ExtractionSpec:
     """
     if not path.exists():
         raise FileNotFoundError(f"Spec file not found: {path}")
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f)
     return spec_from_dict(raw)
 

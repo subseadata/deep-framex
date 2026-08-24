@@ -87,7 +87,7 @@ def import_csv(
     # Canonical names become DB column names — must be valid SQL identifiers
     _validate_columns(list(canonical_to_csv.keys()))
 
-    with open(path, newline="") as f:
+    with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         headers = set(reader.fieldnames or [])
 

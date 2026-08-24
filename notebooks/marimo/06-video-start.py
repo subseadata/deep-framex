@@ -7,10 +7,13 @@ app = marimo.App(width="medium", css_file="theme-06.css")
 @app.cell
 def _():
     import marimo as mo
+    import shutil
     import subprocess
     import yaml
     import html as _html
+    from pathlib import Path
     from textwrap import dedent
+    from urllib.request import urlretrieve
 
     def yaml_block(code):
         # Render YAML as a code block via mo.Html so it bypasses marimo's
@@ -28,7 +31,7 @@ def _():
             f'<code>{body}</code></pre></div>'
         )
 
-    return mo, subprocess, yaml, yaml_block
+    return Path, mo, shutil, subprocess, urlretrieve, yaml, yaml_block
 
 
 @app.cell(hide_code=True)
@@ -50,7 +53,7 @@ def _(mo):
 
 
 @app.cell
-def _(download_button, mo, subprocess):
+def _(Path, download_button, mo, urlretrieve):
     mo.stop(not download_button.value)
 
     BASE_URL = "https://www.ncei.noaa.gov/data/oceans/oer/video/EX2503/Video/EX2503_DIVE01_20250411/Compressed"
@@ -60,13 +63,11 @@ def _(download_button, mo, subprocess):
         "EX2503_VID_20250411T203459Z_ROVHD_Low.mp4",
     ]
 
-    subprocess.run(["mkdir", "-p", "EX-clips"])
+    dest = Path("EX-clips")
+    dest.mkdir(parents=True, exist_ok=True)
 
     for name in FILES:
-        subprocess.run(
-            ["curl", "-fL", "--progress-bar", f"{BASE_URL}/{name}", "-o", f"EX-clips/{name}"],
-            check=True,
-        )
+        urlretrieve(f"{BASE_URL}/{name}", dest / name)
     mo.md("✅ Sample videos downloaded.")
     return
 
@@ -155,7 +156,7 @@ def _(mo, yaml):
 def _(form, mo, yaml):
     if form.value:
         contents = yaml.safe_load(form.value["text"])
-        with open(form.value["filename"], "w") as f:
+        with open(form.value["filename"], "w", encoding="utf-8") as f:
             yaml.safe_dump(contents, f, sort_keys=False)
         mo.md(f"Saved to `{form.value["filename"]}`")
     return
@@ -187,18 +188,19 @@ def _(mo):
 
 
 @app.cell
-def _(mo, run_button, subprocess):
+def _(mo, run_button, shutil, subprocess):
     # Wait until the button is clicked before running anything.
     mo.stop(not run_button.value)
 
     # Clear any frames from a previous run so results don't mix together.
-    # "-f" makes this a no-op (no error) when frames/ doesn't exist yet.
-    subprocess.run(["rm", "-rf", "frames/"])
+    # ignore_errors makes this a no-op when frames/ doesn't exist yet.
+    shutil.rmtree("frames", ignore_errors=True)
 
     result = subprocess.run(
         ["uv", "run", "deep-framex", "./EX-clips/", "--spec", "extraction_spec.yaml"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
 
     output = result.stdout + result.stderr

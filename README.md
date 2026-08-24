@@ -27,16 +27,16 @@ Worked examples live in `notebooks/marimo/` — a hands-on workshop that runs de
 | `02-examine-frames.py` | Inspect the output — image previews, EXIF, iFDO, and BIIGLE metadata |
 | `03-advanced-extraction.py` | Restrict extraction to UTC time windows with varied intervals |
 | `04-sensor-extraction.py` | Add sensor data and extract by environmental constraints (e.g. depth) |
-| `05-spec-review.py` | Recap of the spec format — rules, intervals, periods, constraints |
-| `06-video-start.py` | Extract across a multi-video session, setting UTC start times by hand |
+| `05-spec-review.py` | Recap of the spec format and what extraction takes in and puts out |
+| `06-video-start.py` | Supply start times for videos that have no `creation_time` metadata |
 
-Launch one with:
+Launch one from inside the notebook directory:
 
 ```
 uv run marimo edit notebooks/marimo/00-getting-started.py
 ```
 
-`uv run` builds the project environment (marimo and the plotting libraries are included as dependencies), so no separate install step is needed.
+The notebooks read `clip.mp4`, `sensor.csv` and write `frames/` using paths relative to the working directory, so run them from `notebooks/marimo/` — `uv` still finds the project by walking up to the repo root. `uv run` builds the project environment (marimo and the plotting libraries are included as dependencies), so no separate install step is needed.
 
 `06-video-start.py` downloads a few larger clips (~75 MB each) on demand via a button in the notebook; the rest run entirely on the bundled sample files.
 

@@ -34,10 +34,11 @@ def _(mo):
             mo.md(
                 f"""**Not ready yet.** These packages are missing: `{', '.join(missing)}`
 
-    Please close this notebook and relaunch it from the repo folder with:
+    Please close this notebook and relaunch it from the notebook folder with:
 
     ```
-    uv run marimo edit notebooks/marimo/01-gettingStarted.py
+    cd notebooks/marimo
+    uv run marimo edit 00-getting-started.py
     ```
     """
             ),
