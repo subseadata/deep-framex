@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.23.13"
+__generated_with = "0.23.16"
 app = marimo.App(width="medium", css_file="theme-00.css")
 
 
@@ -16,9 +16,10 @@ def _(mo):
     mo.md("""
     # Getting Started
 
-    This notebook is here to confirm that you have a working environment for future notebooks. If you see a green "You're ready!" message, your environment is set up correctly. 
+    This notebook is here to confirm that you have a working environment for future notebooks. If you see a green "You're ready!" message, your environment is set up correctly.
     """)
     return
+
 
 @app.cell
 def _(mo):
