@@ -7,8 +7,3 @@ frames-*/
 __marimo__/
 _plan_*.yaml
 _spec_*.yaml
-_*.csv
-
-# Notebooks 07/08 and their CTD data — land on feature/notebooks, not here
-notebooks/marimo/08-sensor-shift-metadata.py
-notebooks/marimo/theme-08.css

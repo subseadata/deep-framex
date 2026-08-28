@@ -14,7 +14,7 @@ signed decimal degrees using the hemisphere columns.
 
 import csv
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -42,7 +42,11 @@ def main() -> None:
         writer = csv.writer(f)
         writer.writerow(["timestamp", "longitude", "latitude"])
         for timestamp, lon, lat in parse(source):
-            writer.writerow([timestamp.isoformat(), f"{lon:.6f}", f"{lat:.6f}"])
+            writer.writerow([
+                timestamp.replace(tzinfo=timezone.utc).isoformat(),
+                f"{lon:.6f}",
+                f"{lat:.6f}",
+            ])
 
 
 if __name__ == "__main__":

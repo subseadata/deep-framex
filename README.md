@@ -18,7 +18,7 @@ pip install -e .
 
 ## Quickstart
 
-Worked examples live in `notebooks/marimo/` — a hands-on workshop that runs deep-framex end to end. It ships with its own sample video (`clip.mp4`) and sensor logs (`sensor.csv`, and the CTD records `ex2503_rovctd.csv` / `ex2503_rovctd_badclock.csv`), so there's nothing to bring — clone the repo and go. Work through them in order:
+Worked examples live in `notebooks/marimo/` — a hands-on workshop that runs deep-framex end to end. It ships with its own sample video (`clip.mp4`) and sensor logs (`sensor.csv`, the CTD records `ex2503_rovctd.csv` / `ex2503_rovctd_badclock.csv`, and the merged CTD+nav record `ex2503_dive01_sensors.csv`), so there's nothing to bring — clone the repo and go. Work through them in order:
 
 | Notebook | What it covers |
 |---|---|
@@ -30,6 +30,7 @@ Worked examples live in `notebooks/marimo/` — a hands-on workshop that runs de
 | `05-spec-review.py` | Recap of the spec format and what extraction takes in and puts out |
 | `06-video-start.py` | Supply start times for videos that have no `creation_time` metadata |
 | `07-sensor-time.py` | Correct a sensor clock that disagrees with the video clock, and check it with `--plan` |
+| `08-playground.py` | Sandbox — edit the spec, re-plan, watch the plots and the extracted frames change |
 
 Launch one from inside the notebook directory:
 
@@ -39,7 +40,7 @@ uv run marimo edit notebooks/marimo/00-getting-started.py
 
 The notebooks read `clip.mp4`, `sensor.csv` and write `frames/` using paths relative to the working directory, so run them from `notebooks/marimo/` — `uv` still finds the project by walking up to the repo root. `uv run` builds the project environment (marimo and the plotting libraries are included as dependencies), so no separate install step is needed.
 
-`06-video-start.py` and `07-sensor-time.py` download the same three larger clips (~75 MB each) into `EX-clips/` on demand via a button in the notebook; the rest run entirely on the bundled sample files.
+`06-video-start.py`, `07-sensor-time.py` and `08-playground.py` download the same three larger clips (~75 MB each) into `EX-clips/` on demand via a button in the notebook; the rest run entirely on the bundled sample files.
 
 ## Command-line use
 
@@ -178,6 +179,28 @@ Use `--plan` to check an alignment before extracting anything. It prints the int
 deep-framex video/ --spec spec.yaml --data sensors.csv --plan
 ```
 
+## Converting raw sensor logs
+
+`src/deep_framex/utils/` holds standalone converters that turn common raw
+instrument files into a CSV the importer accepts. Each takes an input and an
+output path:
+
+```
+uv run python src/deep_framex/utils/cnv_to_csv.py cast.cnv sensors.csv
+uv run python src/deep_framex/utils/gpgga_to_csv.py nav.RAW nav.csv
+```
+
+`cnv_to_csv.py` reads a Sea-Bird `.cnv` CTD cast; `gpgga_to_csv.py` reads a
+logger's `$GPGGA` NMEA log and converts the ddmm.mmmm positions to signed
+decimal degrees.
+
+A run takes exactly one CSV, so if your positions and your CTD readings are in
+separate files, join them into one before extracting: one row per timestamp,
+every mapped column populated on every row. Blank cells are rejected, not
+treated as missing — see `08-playground.py`, whose
+`ex2503_dive01_sensors.csv` is a CTD record with nav fixes interpolated onto the
+same 1 s grid.
+
 ## Output
 
 Each extraction run produces:
@@ -305,7 +328,7 @@ src/deep_framex/
 ├── extraction/      # open video containers and decode frames
 ├── metadata/        # embed metadata into image files (EXIF, IPTC, XMP), iFDO and BIIGLE manifests
 ├── output/          # write frames to disk
-└── utils/           # coordinate conversion, timestamp parsing
+└── utils/           # coordinate conversion, timestamp parsing, raw-log converters
 ```
 
 ### Pipeline stages
