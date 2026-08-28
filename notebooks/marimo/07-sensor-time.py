@@ -81,9 +81,9 @@ def _(mo):
     mo.md("""
     ## The sensor file
 
-    `ex2503_rovctd.csv` is the CTD record from the same dive as the video, converted from the Sea-Bird `.cnv` cast that came off the vehicle.
+    `ex2503_rovctd.csv` is the CTD record from the same dive as the video, converted from the Sea-Bird `.cnv` cast that came off the vehicle. Its clock is correct.
 
-    Its clock is correct, so we need to break one to have something to fix. The notebook has already written a fake file that is three minutes late, which you can confirm in the table below.
+    `ex2503_rovctd_badclock.csv` is the same dive as it would have come off a vehicle whose clock ran three minutes fast.
     """)
     return
 
@@ -91,21 +91,17 @@ def _(mo):
 @app.cell
 def _(mo, pd):
     ctd = pd.read_csv("ex2503_rovctd.csv", parse_dates=["utc_time"])
-
-    CLOCK_ERROR = pd.Timedelta(minutes=3)
-    _fast = ctd.copy()
-    _fast["utc_time"] = (_fast["utc_time"] + CLOCK_ERROR).dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-    _fast.to_csv("_rovctd_fastclock.csv", index=False)
+    bad = pd.read_csv("ex2503_rovctd_badclock.csv", parse_dates=["utc_time"])
 
     mo.md(f"""
-    `_rovctd_fastclock.csv`: {len(_fast):,} rows, every timestamp {CLOCK_ERROR.seconds // 60} minutes later than the truth.
+    {len(ctd):,} rows in each file.
 
     | | first reading | last reading |
     |---|---|---|
-    | true record | {ctd["utc_time"].min():%H:%M:%S}Z | {ctd["utc_time"].max():%H:%M:%S}Z |
-    | as received | {ctd["utc_time"].min() + CLOCK_ERROR:%H:%M:%S}Z | {ctd["utc_time"].max() + CLOCK_ERROR:%H:%M:%S}Z |
+    | `ex2503_rovctd.csv` | {ctd["utc_time"].min():%H:%M:%S}Z | {ctd["utc_time"].max():%H:%M:%S}Z |
+    | `ex2503_rovctd_badclock.csv` | {bad["utc_time"].min():%H:%M:%S}Z | {bad["utc_time"].max():%H:%M:%S}Z |
     """)
-    return CLOCK_ERROR, ctd
+    return bad, ctd
 
 
 @app.cell(hide_code=True)
@@ -119,7 +115,7 @@ def _(mo):
 
 
 @app.cell
-def _(CLOCK_ERROR, ctd, pd, plt):
+def _(bad, ctd, pd, plt):
     VIDEO_START = pd.Timestamp("2025-04-11T20:24:59Z")
     VIDEO_END = pd.Timestamp("2025-04-11T20:39:59Z")
 
@@ -128,10 +124,11 @@ def _(CLOCK_ERROR, ctd, pd, plt):
     _lo = VIDEO_START - pd.Timedelta(minutes=10)
     _hi = VIDEO_END + pd.Timedelta(minutes=10)
     _near = ctd[(ctd["utc_time"] >= _lo) & (ctd["utc_time"] <= _hi)]
+    _near_bad = bad[(bad["utc_time"] >= _lo) & (bad["utc_time"] <= _hi)]
 
     fig, ax1 = plt.subplots()
-    ax1.plot(_near["utc_time"] + CLOCK_ERROR, _near["pressure_dbar"],
-             color="steelblue", label="Bad Pressure profile")
+    ax1.plot(_near_bad["utc_time"], _near_bad["pressure_dbar"],
+             color="steelblue", label="Pressure, as received")
     ax1.plot(_near["utc_time"], _near["pressure_dbar"],
              color="steelblue", alpha=0.35, linestyle="--", label="Pressure, true time")
     ax1.axvspan(VIDEO_START, VIDEO_END, color="coral", alpha=0.15, label="Video session")
@@ -148,8 +145,8 @@ def _(CLOCK_ERROR, ctd, pd, plt):
 
 
 @app.cell(hide_code=True)
-def _(CLOCK_ERROR, ctd, mo):
-    mo.md(f"""
+def _(mo):
+    mo.md("""
     ## How would you know?
 
     ![youDont](public/youDont.png)
@@ -166,6 +163,7 @@ def _(mo, yaml_block):
         mo.md("""
     ## Two ways to Solve the Problem
 
+    Both of these describe `ex2503_rovctd_badclock.csv`, the file whose clock ran fast.
 
     If we know **how far off the clock was**, we shift it. The value is a signed `HH:MM:SS` duration added to every sensor timestamp, negative to wind the clock back:
         """),
@@ -179,7 +177,7 @@ def _(mo, yaml_block):
     sensor_start_time: "2025-04-11T18:48:44Z"
         """),
         mo.md("""
-    For this file the two are the same correction written two ways, and they produce identical output.
+    For the bad clock file the two are the same correction written two ways, and they produce identical output. The correct file, `ex2503_rovctd.csv`, needs neither key.
 
     `sensor_start_time` anchors the **earliest reading in the file** — not the first row, and not the first video frame. The file does not need to be sorted, and the anchored reading can sit hours before any footage, as it does here.
 
@@ -276,12 +274,19 @@ def _(mo):
     Decoding video is the slow part of a run, and a misaligned sensor clock produces frames that look fine. So before extracting, ask deep-framex what it intends to do:
 
     ```bash
-    uv run deep-framex ./EX-clips/ --spec extraction_spec.yaml --data _rovctd_fastclock.csv --plan
+    # the correct file, with the alignment keys taken out of the spec
+    uv run deep-framex ./EX-clips/ --spec _plan_truth.yaml --data ex2503_rovctd.csv --plan
+
+    # the bad clock file, with no correction applied
+    uv run deep-framex ./EX-clips/ --spec _plan_uncorrected.yaml --data ex2503_rovctd_badclock.csv --plan
+
+    # the bad clock file, corrected by the spec as you wrote it
+    uv run deep-framex ./EX-clips/ --spec _plan_corrected.yaml --data ex2503_rovctd_badclock.csv --plan
     ```
 
     The `--plan` flag runs the whole pipeline except the decoding. It prints every frame it would extract, with its UTC timestamp and the sensor values it would attach.
 
-    The button below runs it twice against the received file: once with the shift stripped out of the spec, once with it left in.
+    The button below runs all three. The first is the truth we are aiming at; the second is what happens if we run the bad clock data with no correction; the third is what happens when we apply the correction to the bad clock.
     """)
     return
 
@@ -301,25 +306,31 @@ def _(form, mo, plan_button, subprocess, yaml):
     with open(form.value["filename"]) as _f:
         spec = yaml.safe_load(_f)
 
-    # Strip both alignment keys to get the "uncorrected clock" version of the spec.
+    # Strip both alignment keys. The correct file needs no correction, and the
+    # bad clock file with the keys stripped is the uncorrected run.
     unaligned = {k: v for k, v in spec.items()
                  if k not in ("sensor_time_shift", "sensor_start_time")}
 
-    def run_plan(spec_dict, path):
+    def run_plan(spec_dict, path, data):
         with open(path, "w") as _out:
             yaml.safe_dump(spec_dict, _out, sort_keys=False)
         result = subprocess.run(
             ["uv", "run", "deep-framex", "./EX-clips/",
-             "--spec", path, "--data", "_rovctd_fastclock.csv", "--plan"],
+             "--spec", path, "--data", data, "--plan"],
             capture_output=True,
             text=True,
         )
         return result.stdout
 
-    before = run_plan(unaligned, "_plan_unaligned.yaml")
-    after = run_plan(spec, "_plan_aligned.yaml")
+    truth = run_plan(unaligned, "_plan_truth.yaml", "ex2503_rovctd.csv")
+    uncorrected = run_plan(unaligned, "_plan_uncorrected.yaml", "ex2503_rovctd_badclock.csv")
+    corrected = run_plan(spec, "_plan_corrected.yaml", "ex2503_rovctd_badclock.csv")
 
-    mo.md(f"### Sensor clock left incorrect\n```\n{before}\n```\n### Sensor clock corrected\n```\n{after}\n```")
+    mo.md(
+        f"### Correct file, no shift\n```\n{truth}\n```"
+        f"\n### Bad clock file, no correction\n```\n{uncorrected}\n```"
+        f"\n### Bad clock file, shift applied\n```\n{corrected}\n```"
+    )
     
     return
 
@@ -327,46 +338,96 @@ def _(form, mo, plan_button, subprocess, yaml):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md("""
-    ## Note the difference
+    ## Note the difference, and the sameness
 
-    The error did not just attach slightly wrong numbers, it changed **which frames exist**.
-    
-    We asked for frames when pressure was below 1841 dbar and, within our time interval, shifting the sensor time changes what length of video time falls into those bounds.
+    The uncorrected run does not just attach slightly wrong numbers, it changes **which frames exist**. We asked for frames when pressure was below 1841 dbar, and moving the sensor clock moves how much video time falls inside that bound.
 
-    Neither run printed a warning and neither failed.
+    The corrected run matches the truth run frame for frame: same timestamps, same sensor values, same set of frames. The shift put the bad file back on the truth.
+
+    None of the three printed a warning and none of them failed.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## Extract Both Ways
+
+    Two extractions, one after the other, both writing to `frames/`:
+
+    ```bash
+    uv run deep-framex ./EX-clips/ --spec extraction_spec.yaml --data ex2503_rovctd_badclock.csv
+    ```
+
+    ```bash
+    uv run deep-framex ./EX-clips/ --spec extraction_spec.yaml --data ex2503_rovctd.csv
+    ```
+
+    1. Submit the spec form above with `sensor_time_shift` in it, then click the first button.
+    2. Open notebook 02 and look at the frames.
+    3. Come back, **remove the `sensor_time_shift` line** from the spec form, and submit it again.
+    4. Click the second button. It runs against the correct file, and overwrites `frames/`.
+    5. Reload notebook 02. Nothing has changed — that is the point.
     """)
     return
 
 
 @app.cell
 def _(mo):
-    run_button = mo.ui.run_button(label="Run extraction")
-    run_button
-    return (run_button,)
+    run_bad_button = mo.ui.run_button(label="Run extraction (bad clock, corrected)")
+    run_bad_button
+    return (run_bad_button,)
 
 
 @app.cell
-def _(mo, run_button, subprocess):
-    # Wait until the button is clicked before running anything.
-    mo.stop(not run_button.value)
+def _(mo, run_bad_button, subprocess):
+    mo.stop(not run_bad_button.value)
 
     # Clear any frames from a previous run so results don't mix together.
     # "-f" makes this a no-op (no error) when frames/ doesn't exist yet.
     subprocess.run(["rm", "-rf", "frames/"])
 
-    result = subprocess.run(
+    _result = subprocess.run(
         ["uv", "run", "deep-framex", "./EX-clips/", "--spec", "extraction_spec.yaml",
-         "--data", "_rovctd_fastclock.csv"],
+         "--data", "ex2503_rovctd_badclock.csv"],
         capture_output=True,
         text=True,
     )
 
-    output = result.stdout + result.stderr
-    if result.returncode == 0:
-        message = mo.md(f"✅ **Done!** Your frames have been extracted.")
+    if _result.returncode == 0:
+        _message = mo.md("✅ **Done!** Frames extracted from the bad clock file.")
     else:
-        message = mo.md(f"⚠️ **Something went wrong.** Here is what deep-framex reported:\n\n```\n{output}\n```")
-    message
+        _message = mo.md(f"⚠️ **Something went wrong.** Here is what deep-framex reported:\n\n```\n{_result.stdout + _result.stderr}\n```")
+    _message
+    return
+
+
+@app.cell
+def _(mo):
+    run_good_button = mo.ui.run_button(label="Run extraction (correct file)")
+    run_good_button
+    return (run_good_button,)
+
+
+@app.cell
+def _(mo, run_good_button, subprocess):
+    mo.stop(not run_good_button.value)
+
+    subprocess.run(["rm", "-rf", "frames/"])
+
+    _result = subprocess.run(
+        ["uv", "run", "deep-framex", "./EX-clips/", "--spec", "extraction_spec.yaml",
+         "--data", "ex2503_rovctd.csv"],
+        capture_output=True,
+        text=True,
+    )
+
+    if _result.returncode == 0:
+        _message = mo.md("✅ **Done!** Frames extracted from the correct file.")
+    else:
+        _message = mo.md(f"⚠️ **Something went wrong.** Here is what deep-framex reported:\n\n```\n{_result.stdout + _result.stderr}\n```")
+    _message
     return
 
 
