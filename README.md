@@ -18,7 +18,7 @@ pip install -e .
 
 ## Quickstart
 
-Worked examples live in `notebooks/marimo/` — a hands-on workshop that runs deep-framex end to end. It ships with its own sample video (`clip.mp4`) and sensor log (`sensor.csv`), so there's nothing to bring — clone the repo and go. Work through them in order:
+Worked examples live in `notebooks/marimo/` — a hands-on workshop that runs deep-framex end to end. It ships with its own sample video (`clip.mp4`) and sensor logs (`sensor.csv`, and the CTD records `ex2503_rovctd.csv` / `ex2503_rovctd_badclock.csv`), so there's nothing to bring — clone the repo and go. Work through them in order:
 
 | Notebook | What it covers |
 |---|---|
@@ -29,6 +29,7 @@ Worked examples live in `notebooks/marimo/` — a hands-on workshop that runs de
 | `04-sensor-extraction.py` | Add sensor data and extract by environmental constraints (e.g. depth) |
 | `05-spec-review.py` | Recap of the spec format and what extraction takes in and puts out |
 | `06-video-start.py` | Supply start times for videos that have no `creation_time` metadata |
+| `07-sensor-time.py` | Correct a sensor clock that disagrees with the video clock, and check it with `--plan` |
 
 Launch one from inside the notebook directory:
 
@@ -38,7 +39,7 @@ uv run marimo edit notebooks/marimo/00-getting-started.py
 
 The notebooks read `clip.mp4`, `sensor.csv` and write `frames/` using paths relative to the working directory, so run them from `notebooks/marimo/` — `uv` still finds the project by walking up to the repo root. `uv run` builds the project environment (marimo and the plotting libraries are included as dependencies), so no separate install step is needed.
 
-`06-video-start.py` downloads a few larger clips (~75 MB each) on demand via a button in the notebook; the rest run entirely on the bundled sample files.
+`06-video-start.py` and `07-sensor-time.py` download the same three larger clips (~75 MB each) into `EX-clips/` on demand via a button in the notebook; the rest run entirely on the bundled sample files.
 
 ## Command-line use
 
