@@ -16,9 +16,9 @@ cd deep-framex
 pip install -e .
 ```
 
-## Quickstart
+## Demo
 
-Worked examples live in `notebooks/marimo/` — a hands-on workshop that runs deep-framex end to end. It ships with its own sample video (`clip.mp4`) and sensor logs (`sensor.csv`, the CTD records `ex2503_rovctd.csv` / `ex2503_rovctd_badclock.csv`, and the merged CTD+nav record `ex2503_dive01_sensors.csv`), so there's nothing to bring — clone the repo and go. Work through them in order:
+Worked examples live in `notebooks/marimo/`, a hands-on workshop that runs deep-framex end to end. It ships with its own sample video (`clip.mp4`) and sensor logs (`sensor.csv`, the CTD records `ex2503_rovctd.csv` / `ex2503_rovctd_badclock.csv`, and the merged CTD+nav record `ex2503_dive01_sensors.csv`). Work through them in order:
 
 | Notebook | What it covers |
 |---|---|
@@ -32,7 +32,7 @@ Worked examples live in `notebooks/marimo/` — a hands-on workshop that runs de
 | `07-sensor-time.py` | Correct a sensor clock that disagrees with the video clock, and check it with `--plan` |
 | `08-playground.py` | Sandbox — edit the spec, re-plan, watch the plots and the extracted frames change |
 
-Launch one from inside the notebook directory:
+Launch one from inside the notebook directory as:
 
 ```
 uv run marimo edit notebooks/marimo/00-getting-started.py
@@ -88,7 +88,7 @@ rules:
         max: 1200
 ```
 
-All timestamps must be ISO 8601 with an explicit UTC offset (`Z` or `+00:00`).
+**All timestamps must be ISO 8601 with an explicit UTC offset (`Z` or `+00:00`).**
 
 ### Sensor mappings
 
@@ -171,7 +171,7 @@ sensor_start_time: "2025-11-15T10:00:00Z"
 
 `sensor_start_time` places the *earliest* sensor reading at the time you give and shifts every other reading by the same amount. It anchors on the earliest reading, not on the first row of the CSV, so the file does not need to be sorted.
 
-The two are alternative ways to say the same thing; setting both is an error. Both preserve the spacing between readings — neither corrects clock drift.
+The two are alternative ways to say the same thing; setting both is an error. Both preserve the spacing between readings and neither corrects clock drift.
 
 Use `--plan` to check an alignment before extracting anything. It prints the interpolated sensor values for every planned frame without decoding a single one:
 
