@@ -149,8 +149,6 @@ def _(mo):
     mo.md("""
     ## How would you know?
 
-    ![youDont](public/youDont.png)
-
     deep-framex is not (yet?) a tool for checking the quality of your sensor and camera time records. That responsibility lies with the scientist for now.
 
     """)

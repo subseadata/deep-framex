@@ -68,7 +68,7 @@ def _(mo):
     {csv_text}
     ```
 
-    We'll take a short look at the data plotted up for context.
+    We'll take a short look at the data plotted up for context. deep-framex does not generate data previews like this by default, but it could.
 
     """)
 
@@ -183,8 +183,8 @@ def _(mo):
 
     Remember, in order to perform sensor-aware extractions, you must 
     1. Have timestamped csv sensor files
-    2. Add a constriaints block and a sensor mappings block to your YAML file
-    3. Call deep-framex with the --data flag and pass in the sensor file.
+    2. Add a constraints block and a sensor mappings block to your YAML file
+    3. Call deep-framex with the `--data` flag and pass in the sensor file.
 
     """)
     return

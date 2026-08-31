@@ -89,8 +89,10 @@ def _(mo, yaml_block):
     ```bash
     ❯❯ ffprobe -v error -show_entries format_tags=creation_time -of default=nw=1 EX2503_VID_20250411T202459Z_ROVHD_Low.mp4
         TAG:creation_time=2025-04-11T20:25:59.000000Z
+
     ❯❯ ffprobe -v error -show_entries format_tags=creation_time -of default=nw=1 EX2503_VID_20250411T203000Z_ROVHD_Low.mp4
         TAG:creation_time=2025-04-11T20:30:57.000000Z
+
     ❯❯ ffprobe -v error -show_entries format_tags=creation_time -of default=nw=1 EX2503_VID_20250411T203459Z_ROVHD_Low.mp4
         TAG:creation_time=2025-04-11T20:36:00.000000Z
     ```
@@ -173,9 +175,11 @@ def _(mo):
     uv run deep-framex ./EX-clips/ --spec extraction_spec.yaml
     ```
 
-    The download button placed our video clips in a directory called EX-clips. We don't have to specify the video files directly in this case, we can specify the directory where they are and deep-framex will perform the extraction we requested over all videos in the directory.
+    The download button placed our video clips in a directory called `EX-clips`. We don't have to specify the video files directly in this case, we can specify the directory where they are and deep-framex will perform the extraction we requested over all videos in the directory.
 
     This helps when you want to extract from multiple sequential videos. Constraints all still work the same as before - e.g., if you specify extraction intervals over a limited time period that doesn't cover all the video files, it won't extract over clips outside those times.
+
+    After running this extraction and viewing the frames, try again but change the **year** of the start time. Also make sure to edit the year in your time contstraints.
     """)
     return
 
@@ -211,6 +215,16 @@ def _(mo, run_button, shutil, subprocess):
     message
     return
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md("""
+    ## Who is in charge?
+
+    After running the extraction and viewing the frames, try again but change the **year** of the start time. Also make sure to edit the year in your time contstraints.
+
+    Notice that deep-framex did exactly what you told it to do. It's not going to produce an error that says "hey, are you sure about this?" - you, the user, are in charge.
+    """)
+    return
 
 if __name__ == "__main__":
     app.run()

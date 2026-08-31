@@ -26,8 +26,6 @@ def _(mo):
 
     Below we will examine the frame metadata to understand what is output beyond the image.
 
-    **Note that these metadata files accompanying our images are pretty sparse for now, because we haven't added any sensor data paired with our images.**
-
     """)
     return
 

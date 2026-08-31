@@ -100,7 +100,7 @@ def _(mo, yaml):
         **Filename:** {filename}
         """)
         .batch(
-            text=mo.ui.text_area(value="rules:\n  - interval_s: 2.0\n    periods:\n        - start: \"2024-07-14T21:59:20Z\"\n          end: \"2024-07-14T21:59:26Z\"", rows=10),
+            text=mo.ui.text_area(value="rules:\n  - interval_s: 2.0\n    periods:\n        - start: \"2024-07-14T21:59:20Z\"\n ", rows=10),
             filename=mo.ui.text(value="extraction_spec.yaml"),
         )
         .form(validate=check_yaml)
