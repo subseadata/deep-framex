@@ -79,7 +79,7 @@ def _(mo, yaml_block):
             end: "2024-07-14T21:59:26Z"
         """),
         mo.md("""
-    Knowing this, add the half second interval extraction period yourself.
+    Knowing this, finish the YAML file below, ending the first extraction window and adding the one-second interval window.
         """),
     ])
     return
