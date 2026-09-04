@@ -98,6 +98,8 @@ rules:
         max: 1200
 ```
 
+![union-intersect-explainer](docs/union-intersect-diagram.png)
+
 **All timestamps must be ISO 8601 with an explicit UTC offset (`Z` or `+00:00`).**
 
 ### Sensor mappings
