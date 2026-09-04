@@ -86,6 +86,16 @@ rules:
       - column: depth
         min: 1000
         max: 1200
+
+  # intersecting rules
+  - interval_s: 2.0
+    periods:
+      - start: "2025-11-15T10:25:00Z"
+        end:   "2025-11-15T10:30:00Z"
+    constraints:
+      - column: depth
+        min: 1000
+        max: 1200
 ```
 
 **All timestamps must be ISO 8601 with an explicit UTC offset (`Z` or `+00:00`).**
