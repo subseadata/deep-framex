@@ -99,6 +99,8 @@ rules:
 ```
 
 ![union-intersect-explainer](docs/union-intersect-diagram.png)
+Conceptual diagram showing the difference between unioned (purple circles) and intersected (blue diamonds) extraction rules, across a depth constraint (teal) and a time period (orange). Intersected single rules will only extract within the overlapping area (dashed box). Unioned rules will extract anywhere a rule condition is met.
+
 
 **All timestamps must be ISO 8601 with an explicit UTC offset (`Z` or `+00:00`).**
 
