@@ -13,7 +13,7 @@ from ..models.core import VideoFile
 from ..extraction.video_reader import probe_video
 
 # TODO: evaluate whether other formats (.avi, .mkv, .mts, .m4v) are needed
-VIDEO_EXTENSIONS = {".mp4", ".mov"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".mpg"}
 
 def discover_videos(
     source: Path | list[Path],
