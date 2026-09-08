@@ -40,9 +40,9 @@ def _(mo):
     # Sensor constrained extraction
     Now that we understand how to set up time-based extractions, we're ready to tackle sensor-based constraints. This is one of the most powerful features of deep-framex.
 
-    Before we begin, take a moment and re-read the README section on **Extraction Spec**, and continue through **Sensor mappings**. You may notice some similarity to the time-based extractions.
+    Before we begin, take a moment and re-read the README section on **Extraction Spec**, and continue through **Sensor mappings** and **Timestamp formats**. You may notice some similarity to the time-based extractions.
 
-    Briefly skim through the repository's full **Extraction Spec** file and focus on the two example sensor-based extraction section in [https://github.com/subseadata/deep-framex/blob/1f99c885621a9705e99e65d2d7ff4f6a6232c6c2/extraction_spec.yaml](https://github.com/subseadata/deep-framex/blob/1f99c885621a9705e99e65d2d7ff4f6a6232c6c2/extraction_spec.yaml).
+    Briefly skim through the repository's full **Extraction Spec** file and focus on the two example sensor-based extraction section in [https://github.com/subseadata/deep-framex/blob/main/extraction_spec.yaml](https://github.com/subseadata/deep-framex/blob/main/extraction_spec.yaml).
 
     """)
     return
@@ -58,9 +58,11 @@ def _(mo):
 
     Sensor data is imported into deep-framex as comma-separated value (csv) files. Imported sensor data **must** have the following characteristics to be used by deep-framex:
     * Columns must be labeled
-    * One column must include timestamps
+    * Timestamps must be present — in one column, or split across a date column and a time column
 
     **Everything in deep-framex hinges on timestamps.**
+
+    Timestamps are read as ISO 8601 by default, like the `2024-07-14T21:59:20Z` below. Loggers that write something else need a `timestamp_format` in the mappings block, covered further down. Timestamps with no timezone marker are taken as UTC, and deep-framex warns once per run when that happens.
 
     Here's a simple sensor data file as an example. It's already here in the notebook directory under `sensor.csv` if you want to open it in a text editor and take a look.
 
@@ -132,6 +134,17 @@ def _(mo, yaml_block):
         """),
         mo.md("""
     Our column name from the sensor file is on the right, and the names deep-framex uses are on the left. How did we know this? It's in the example `extraction_spec.yaml` and in the README on the repository.
+
+    Our `time` column is already ISO 8601, so that is all we need. A logger that writes its dates some other way needs one more line naming the format, and if the date and time are in two columns we list both:
+        """),
+        yaml_block("""
+    mappings:
+      timestamp:        [Date, Time]
+      timestamp_format: "%d/%m/%Y %H:%M:%S"
+      depth:            depth_m
+        """),
+        mo.md("""
+    The two cells are joined with a single space and parsed as one value. Slash-separated dates **always** need `timestamp_format` — `01/09/2022` is 1 September to some loggers and 9 January to others, and deep-framex will not guess.
         """),
     ])
     return
