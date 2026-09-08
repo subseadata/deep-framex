@@ -9,8 +9,13 @@ string and may reference any of the following variables:
     {utc}          — UTC timestamp, compact format: 20251115T102530123456
     {video_stem}   — source video filename without extension
     {offset_s}     — offset in seconds from the start of the source video
+    {index}        — sequential frame number within the video, zero-based
+    {index1}       — same, one-based
     {<key>}        — any canonical sensor key (e.g. {depth}, {latitude}, {temperature})
     {<key>}        — any key from project_metadata (e.g. {dive_id}, {cruise_id})
+
+Frame numbers are plain integers, so a format spec pads them: {index:05d}
+renders 00000, 00001, ... and {index1:05d} renders 00001, 00002, ...
 
 Sensor keys use canonical names (the left-hand side of the mappings block in
 the YAML spec), not the original CSV column names.  So if the user mapped
@@ -62,7 +67,7 @@ from ..models.core import ExtractedFrame, FrameMetadata
 _DEFAULT_TEMPLATE = "{utc}_{video_stem}.jpg"
 
 # Fixed keys always available in the template context, regardless of sensor data.
-_BUILTIN_KEYS = {"utc", "video_stem", "offset_s"}
+_BUILTIN_KEYS = {"utc", "video_stem", "offset_s", "index", "index1"}
 
 
 def write_frame(
@@ -71,6 +76,7 @@ def write_frame(
     filename_template: str | None,
     xmp_namespace_uri: str,
     xmp_namespace_prefix: str,
+    index: int = 0,
 ) -> tuple[Path, FrameMetadata]:
     """Write a single frame to disk with all metadata embedded in one save.
 
@@ -99,6 +105,8 @@ def write_frame(
                               None to use the default pattern.
         xmp_namespace_uri:    URI for the custom XMP namespace.
         xmp_namespace_prefix: prefix for the custom XMP namespace.
+        index:                zero-based frame number within the video, for the
+                              {index} and {index1} template variables.
 
     Returns:
         (Path, FrameMetadata) — path to the written file and its metadata.
@@ -108,7 +116,7 @@ def write_frame(
         OSError: if the file cannot be written.
     """
     meta = frame.metadata
-    filename = _render_filename(frame, filename_template)
+    filename = _render_filename(frame, filename_template, index)
     path = output_dir / filename
 
     exif_bytes = _build_exif(meta)
@@ -173,8 +181,10 @@ def output_frames(
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     return [
-        write_frame(frame, output_dir, filename_template, xmp_namespace_uri, xmp_namespace_prefix)
-        for frame in frames
+        write_frame(
+            frame, output_dir, filename_template, xmp_namespace_uri, xmp_namespace_prefix, index
+        )
+        for index, frame in enumerate(frames)
     ]
 
 
@@ -207,7 +217,11 @@ def validate_filename_template(
                     Python format string.
     """
     all_keys = _BUILTIN_KEYS | set(sensor_keys) | set(metadata_keys)
-    dummy = {k: "0" for k in all_keys}
+    # Dummy values match the runtime types so numeric format specs
+    # (e.g. {index:05d}, {depth:.1f}) validate the same way they render.
+    floats = {"offset_s"} | set(sensor_keys)
+    ints = {"index", "index1"}
+    dummy = {k: 0.0 if k in floats else 0 if k in ints else "0" for k in all_keys}
 
     try:
         template.format_map(dummy)
@@ -223,7 +237,7 @@ def validate_filename_template(
         raise ValueError(f"filename_template is not a valid format string: {e}") from e
 
 
-def _render_filename(frame: ExtractedFrame, template: str | None) -> str:
+def _render_filename(frame: ExtractedFrame, template: str | None, index: int = 0) -> str:
     """Render a filename for a frame from the template string.
 
     Builds a context dict from the frame's metadata and attempts to render
@@ -234,6 +248,8 @@ def _render_filename(frame: ExtractedFrame, template: str | None) -> str:
         utc         — compact UTC timestamp string (%Y%m%dT%H%M%S%f)
         video_stem  — frame.metadata.video_path.stem
         offset_s    — frame.metadata.offset_s (float)
+        index       — zero-based frame number within the video (int)
+        index1      — one-based frame number within the video (int)
         + all keys from frame.metadata.sensor_snapshot (float values)
         + all keys from frame.metadata.project_metadata (str values)
 
@@ -244,6 +260,7 @@ def _render_filename(frame: ExtractedFrame, template: str | None) -> str:
         frame:    ExtractedFrame whose metadata provides the context values.
         template: format string from ExtractionSpec.filename_template,
                   or None to use the default.
+        index:    zero-based frame number within the video.
 
     Returns:
         Rendered filename string including extension.
@@ -255,6 +272,8 @@ def _render_filename(frame: ExtractedFrame, template: str | None) -> str:
     context["utc"] = meta.utc_timestamp.strftime("%Y%m%dT%H%M%S%f")
     context["video_stem"] = meta.video_path.stem
     context["offset_s"] = meta.offset_s
+    context["index"] = index
+    context["index1"] = index + 1
 
     effective = template if template is not None else _DEFAULT_TEMPLATE
 

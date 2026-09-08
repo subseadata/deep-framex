@@ -53,3 +53,11 @@ def test_render_filename_basic(frame):
 def test_render_filename_fallback(frame):
     assert (_render_filename(frame, "{utc}_{banana}_{dive_id}_{depth}m_{video_stem}.jpg")
                             == "20251015T102518000000_video.jpg")
+
+# validate_filename_template, padded index format specs accepted.
+def test_validate_filename_template_index():
+    validate_filename_template("{video_stem}_{index:05d}_{index1:05d}.jpg", [], [])
+
+# _render_filename, index is zero-based and index1 one-based.
+def test_render_filename_index(frame):
+    assert _render_filename(frame, "{video_stem}_{index:05d}_{index1:05d}.jpg", 7) == "video_00007_00008.jpg"

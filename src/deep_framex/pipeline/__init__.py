@@ -91,10 +91,10 @@ def _extract_and_write_video(
     if stream_output:
         # Write each frame immediately — peak memory is one decoded frame.
         written = []
-        for frame in decode_frames(video_plan):
+        for index, frame in enumerate(decode_frames(video_plan)):
             result = write_frame(
                 frame, output_dir, filename_template,
-                xmp_namespace_uri, xmp_namespace_prefix,
+                xmp_namespace_uri, xmp_namespace_prefix, index,
             )
             written.append(result)
         return written
