@@ -41,6 +41,7 @@ Durations are signed HH:MM:SS strings — quote them, or YAML reads a
 non-zero-padded value such as 1:30:00 as the sexagesimal integer 5400.
 """
 
+import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -50,7 +51,15 @@ from ..models.core import (
     ColumnMappings,
     ExtractionRule,
     ExtractionSpec,
+    SensorSource,
     TimePeriod,
+)
+
+# SensorSource fields that configure the file rather than name a sensor column.
+# Everything else a user lists in a sensors entry is a canonical column name.
+_SENSOR_RESERVED = frozenset(
+    {'file', 'timestamp', 'timestamp_format', 'time_shift', 'start_time',
+     'interpolation_window'}
 )
 
 
@@ -81,6 +90,33 @@ def _parse_hms(value) -> timedelta:
             f"leading sign (e.g. \"01:30:00\" or \"-00:00:45\"), got {value!r}"
         ) from None
     return sign * timedelta(hours=hours, minutes=minutes, seconds=seconds)
+
+
+def _parse_window(value, label: str) -> int:
+    """Parse an interpolation_window value into a positive integer.
+
+    Args:
+        value: the raw YAML value.
+        label: how to name the key in error and warning messages.
+
+    Returns:
+        The window as an int, clamped up to 1.
+
+    Raises:
+        ValueError: if the value is not an integer.
+    """
+    try:
+        window = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{label} must be a positive integer, got {value!r}") from None
+    if window < 1:
+        warnings.warn(
+            f"{label} must be at least 1 (got {window}) — setting to 1.",
+            UserWarning,
+            stacklevel=3,
+        )
+        window = 1
+    return window
 
 
 def spec_from_file(path: Path) -> ExtractionSpec:
@@ -205,25 +241,65 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
             raise ValueError("'mappings' block is present but 'timestamp' is missing")
         mappings = ColumnMappings(**raw['mappings'])
 
+    # sensors (optional) — one entry per sensor CSV, each with its own file,
+    # timestamp column(s), clock correction, and interpolation window.
+    sensors = []
+    seen: dict[str, str] = {}
+    for i, raw_sensor in enumerate(raw.get('sensors') or []):
+        for key in ('file', 'timestamp'):
+            if key not in raw_sensor:
+                raise ValueError(f"Sensor {i}: missing '{key}'")
+
+        entry = dict(raw_sensor)
+
+        if entry.get('time_shift') is not None:
+            entry['time_shift'] = _parse_hms(entry['time_shift'])
+
+        if entry.get('start_time') is not None:
+            try:
+                start = datetime.fromisoformat(str(entry['start_time']))
+            except ValueError as e:
+                raise ValueError(f"Sensor {i}: 'start_time': invalid datetime: {e}") from e
+            if start.tzinfo is None:
+                raise ValueError(
+                    f"Sensor {i}: 'start_time' must be UTC-aware (use Z or +00:00)"
+                )
+            entry['start_time'] = start
+
+        # Same intent conflict as the spec-level keys — silently preferring one
+        # would misalign this file's readings without telling the user.
+        if entry.get('time_shift') is not None and entry.get('start_time') is not None:
+            raise ValueError(
+                f"Sensor {i} ({entry['file']}): 'time_shift' and 'start_time' are "
+                "mutually exclusive — use a shift to move this file's clock by a known "
+                "amount, or a start time to anchor its earliest reading. Remove one."
+            )
+
+        if entry.get('interpolation_window') is not None:
+            entry['interpolation_window'] = _parse_window(
+                entry['interpolation_window'], f"Sensor {i}: 'interpolation_window'"
+            )
+
+        sensors.append(SensorSource(**entry))
+
+        # Canonical names become columns in one shared snapshot, so two files
+        # claiming the same name would silently overwrite each other's values.
+        for name in sensors[-1].model_fields_set - _SENSOR_RESERVED:
+            if name in seen:
+                raise ValueError(
+                    f"Sensor {i} ({entry['file']}) maps {name!r}, which "
+                    f"{seen[name]} already maps. Sensor files may not map the same "
+                    "name — rename one side (e.g. 'ctd_depth' and 'nav_depth')."
+                )
+            seen[name] = str(entry['file'])
+
     # project_metadata (optional) — all values coerced to str
     project_metadata = {str(k): str(v) for k, v in raw.get('metadata', {}).items()}
 
-    # interpolation_window — top-level, must be a positive integer
-    raw_window = raw.get('interpolation_window', 2)
-    try:
-        interpolation_window = int(raw_window)
-    except (TypeError, ValueError):
-        raise ValueError(
-            f"'interpolation_window' must be a positive integer, got {raw_window!r}"
-        )
-    if interpolation_window < 1:
-        import warnings
-        warnings.warn(
-            f"'interpolation_window' must be at least 1 (got {interpolation_window}) — setting to 1.",
-            UserWarning,
-            stacklevel=2,
-        )
-        interpolation_window = 1
+    # interpolation_window — top-level default for sources that omit their own
+    interpolation_window = _parse_window(
+        raw.get('interpolation_window', 2), "'interpolation_window'"
+    )
 
     # initial_offset_s — top-level, must be a non-negative number
     raw_offset = raw.get('initial_offset_s', 0.0)
@@ -319,6 +395,7 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
     return ExtractionSpec(
         rules=rules,
         mappings=mappings,
+        sensors=sensors,
         project_metadata=project_metadata,
         filename_template=raw.get('filename_template'),
         initial_offset_s=initial_offset_s,
