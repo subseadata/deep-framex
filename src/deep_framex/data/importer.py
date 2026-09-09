@@ -1,6 +1,9 @@
 """Data importer
 
-Loads a user-supplied CSV into the session database sensor_readings table.
+Loads a user-supplied CSV into a session database sensor readings table.
+
+One table per CSV, named by the caller, so each file keeps its own timestamp
+grid and several sensor files can be loaded into one session.
 
 Only columns listed in the user's mappings block are imported — every other
 column in the CSV is ignored.  The mappings block pairs the name the tool
@@ -42,8 +45,9 @@ def import_csv(
     mappings: ColumnMappings,
     time_shift: timedelta | None = None,
     start_time: datetime | None = None,
+    table: str = "sensor_readings",
 ) -> ImportedDataset:
-    """Load a CSV file into the session database sensor_readings table.
+    """Load a CSV file into a session database sensor readings table.
 
     Reads only the columns named in mappings spec from YAML.  Canonical 
     names (the keys of mappings) become the DB column names.  The
@@ -62,6 +66,8 @@ def import_csv(
                   is shifted by the same delta, so the spacing between readings
                   is preserved.  Note this anchors on the earliest reading, not
                   on the first CSV row — row order in the file is not assumed.
+        table:    name of the table to load into.  One table per sensor CSV, so
+                  each file keeps its own timestamp grid.
 
     time_shift and start_time are alternative ways to express the same
     correction; the spec parser rejects specs that set both.
@@ -115,7 +121,7 @@ def import_csv(
                     f"not found in CSV. Available columns: {sorted(headers)}"
                 )
 
-        init_sensor_table(conn, list(canonical_to_csv.keys()))
+        init_sensor_table(conn, list(canonical_to_csv.keys()), table)
 
         rows: list[tuple] = []
         timestamps: list[float] = []
@@ -155,7 +161,7 @@ def import_csv(
         timestamps = [ts + delta for ts in timestamps]
 
     placeholders = ", ".join(["?"] * (1 + len(canonical_to_csv)))
-    conn.executemany(f"INSERT INTO sensor_readings VALUES ({placeholders})", rows)
+    conn.executemany(f'INSERT INTO "{table}" VALUES ({placeholders})', rows)
     conn.commit()
 
     return ImportedDataset(

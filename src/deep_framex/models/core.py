@@ -79,6 +79,30 @@ class ColumnMappings(CustomBaseModel):
     depth: str | None = None                # CSV column name for depth (metres, positive)
 
 
+class SensorSource(ColumnMappings):
+    """One sensor CSV together with everything needed to read and align it.
+
+    Extends ColumnMappings with the file to read and that file's own clock
+    correction and interpolation window, so a run can take several sensor
+    files whose loggers ran at different rates and on different clocks.
+
+    time_shift and start_time are the per-file equivalents of the spec-level
+    sensor_time_shift and sensor_start_time; as there, setting both is an
+    error.  interpolation_window is None when the user did not set it, in
+    which case the spec-level value applies — window size only means
+    something relative to a file's sample rate, so a 1 Hz CTD and a 0.1 Hz
+    nav fix generally want different values.
+
+    file is a declared field rather than an extra, so it stays out of
+    model_extra and the importer keeps treating extras as sensor columns.
+    """
+
+    file: Path
+    time_shift: timedelta | None = None     # add this duration to every timestamp in this file
+    start_time: datetime | None = None      # set this file's earliest reading to this UTC time
+    interpolation_window: int | None = None  # rows per side; None = use the spec-level value
+
+
 class ImportedDataset(CustomBaseModel):
     """Describes the sensor data written into the session database.
 
@@ -131,6 +155,7 @@ class ExtractionRule(CustomBaseModel):
 class ExtractionSpec(CustomBaseModel):
     rules: list[ExtractionRule]
     mappings: ColumnMappings | None = None          # omit if no CSV was imported
+    sensors: list[SensorSource] = Field(default_factory=list)  # one entry per sensor CSV
     project_metadata: dict[str, str] = {}
     xmp_namespace_uri: str = "https://deep-framex.org/xmp/v1/"
     xmp_namespace_prefix: str = "dfx"
