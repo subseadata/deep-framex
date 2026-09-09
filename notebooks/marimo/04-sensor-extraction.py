@@ -145,6 +145,30 @@ def _(mo, yaml_block):
         """),
         mo.md("""
     The two cells are joined with a single space and parsed as one value. Slash-separated dates **always** need `timestamp_format` — `01/09/2022` is 1 September to some loggers and 9 January to others, and deep-framex will not guess.
+
+    ### More than one sensor file
+
+    Nav fixes and CTD readings often arrive as separate files. Rather than one `mappings` block plus `--data`, list each file in a `sensors` block and give each its own mappings:
+        """),
+        yaml_block("""
+    sensors:
+      - file: ctd.csv
+        timestamp: time
+        depth: depth_m
+        temperature: temperature
+      - file: nav.csv
+        timestamp: utc_time
+        latitude: latitude
+        longitude: longitude
+        """),
+        mo.md("""
+    Each file is read on its own timestamps, so they need not share a sample rate or a start time — deep-framex interpolates each one separately and merges the results into every frame. There is no need to join the files yourself.
+
+    Because the values all land in one set of names, two files may **not** map the same name. If both your files have a depth column, rename one side: `ctd_depth` and `nav_depth`.
+
+    Each entry can also carry its own `time_shift` or `start_time` (notebook 07) and its own `interpolation_window`, since a 1 Hz logger and a 0.1 Hz nav fix want different windows.
+
+    The single `mappings` block plus `--data` we use below is the one-file shorthand for all this.
         """),
     ])
     return

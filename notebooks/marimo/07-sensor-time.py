@@ -202,6 +202,27 @@ def _(mo, yaml_block):
       pressure: pressure_dbar
       temperature: temperature_c
         """),
+        mo.md("""
+    ### One clock per file
+
+    `sensor_time_shift` and `sensor_start_time` correct the whole run, which is what you want with a single sensor file. When a run reads several files, each logger had its own clock, so the correction belongs on the file — put it in that file's `sensors` entry:
+        """),
+        yaml_block("""
+    sensors:
+      - file: ex2503_rovctd_badclock.csv
+        timestamp: utc_time
+        bad_pressure: pressure_dbar
+        time_shift: "-00:03:00"
+      - file: ex2503_dive01_nav.csv
+        timestamp: utc_time
+        latitude: latitude
+        longitude: longitude
+        """),
+        mo.md("""
+    Only the first file's readings move; the nav fixes are left alone. Note the CTD column is mapped as `bad_pressure` rather than `pressure` — two entries may not map the same name, so pairing this file with the correctly-clocked `ex2503_rovctd.csv` in one run would need both renamed.
+
+    Each entry can also set its own `interpolation_window`. A window of 2 spans about 2 s on a 1 Hz CTD but 20 s on a nav fix that arrives every 10 s, so the same number does not mean the same thing to both files.
+        """),
     ])
     return
 

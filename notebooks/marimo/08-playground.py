@@ -19,15 +19,17 @@ def _():
     from PIL import Image, ExifTags
 
     VIDEOS = "./EX-clips/"
-    DATA = "ex2503_dive01_sensors.csv"
+    # The sensor files are named in the spec's sensors block, not passed here.
+    CTD = "ex2503_rovctd.csv"
+    NAV = "ex2503_dive01_nav.csv"
 
     def plan_cmd(spec_file):
         return ["uv", "run", "deep-framex", VIDEOS,
-                "--spec", spec_file, "--data", DATA, "--plan"]
+                "--spec", spec_file, "--plan"]
 
     def run_cmd(spec_file):
         return ["uv", "run", "deep-framex", VIDEOS,
-                "--spec", spec_file, "--data", DATA]
+                "--spec", spec_file]
 
     def bounds(spec, column):
         """First min/max pair constraining `column` anywhere in the spec's rules."""
@@ -38,7 +40,8 @@ def _():
         return None, None
 
     return (
-        DATA,
+        CTD,
+        NAV,
         ExifTags,
         Image,
         Path,
@@ -62,7 +65,7 @@ def _(mo):
     mo.md("""
     # Extraction Playground
 
-    NOAA Ship *Okeanos Explorer* EX2503, dive 01, 11 April 2025. Three 5-minute ROV clips, the dive's CTD record, and the vehicle nav track combined into one CSV.
+    NOAA Ship *Okeanos Explorer* EX2503, dive 01, 11 April 2025. Three 5-minute ROV clips, the dive's CTD record, and the vehicle nav track — the two sensor records as the separate files they were logged as.
 
     Edit the spec, re-submit, re-plan and see the extraction plots. Confirm, and then extract.
     """)
@@ -99,19 +102,33 @@ def _(download_button, mo, subprocess):
 
 
 @app.cell(hide_code=True)
-def _(DATA, islice, mo, pd):
-    sensors = pd.read_csv(DATA, parse_dates=["utc_time"])
+def _(CTD, NAV, islice, mo, pd):
+    _ctd = pd.read_csv(CTD, parse_dates=["utc_time"])
+    _nav = pd.read_csv(NAV, parse_dates=["utc_time"])
 
-    with open(DATA) as _f:
-        _head = "".join(islice(_f, 9))
+    # Merged here only so the plots below can draw both records on one frame.
+    # deep-framex reads the two files separately and interpolates each on its
+    # own timestamps, so nothing needs joining before an extraction.
+    sensors = _ctd.merge(_nav, on="utc_time", how="outer").sort_values("utc_time")
+
+    with open(CTD) as _f:
+        _ctd_head = "".join(islice(_f, 5))
+    with open(NAV) as _f:
+        _nav_head = "".join(islice(_f, 5))
 
     mo.md(
         "## The data\n\n"
-        f"```\n{_head}```\n\n"
-        f"{len(sensors):,} rows at 1 s, {sensors["utc_time"].min():%H:%M:%S}Z to "
-        f"{sensors["utc_time"].max():%H:%M:%S}Z. CTD readings with the nav fixes "
-        "interpolated onto the same grid.\n\n"
-        "Any column here can go in `mappings`, and any mapped column can be constrained."
+        f"**{CTD}** — {len(_ctd):,} rows at 1 s, "
+        f"{_ctd["utc_time"].min():%H:%M:%S}Z to {_ctd["utc_time"].max():%H:%M:%S}Z\n\n"
+        f"```\n{_ctd_head}```\n\n"
+        f"**{NAV}** — {len(_nav):,} rows at 1 s, "
+        f"{_nav["utc_time"].min():%H:%M:%S}Z to {_nav["utc_time"].max():%H:%M:%S}Z\n\n"
+        f"```\n{_nav_head}```\n\n"
+        "Two files, each with its own timestamps and its own start. The `sensors` "
+        "block below gives each one its own entry — any column in either file can "
+        "be mapped, and any mapped column can be constrained.\n\n"
+        "`ex2503_dive01_sensors.csv` is also in this folder: the same two records "
+        "hand-joined onto one 1 s grid, which is what deep-framex used to require."
     )
     return (sensors,)
 
@@ -143,13 +160,17 @@ def _(mo, yaml):
                     "      min: 2.17\n"
                     "      max: 2.24\n"
                     "\n"
-                    "mappings:\n"
-                    "  timestamp: utc_time\n"
-                    "  latitude: latitude\n"
-                    "  longitude: longitude\n"
-                    "  pressure: pressure_dbar\n"
-                    "  temperature: temperature_c\n"
-                    "  turbidity: turbidity_ftu\n"
+                    "sensors:\n"
+                    "  - file: ex2503_rovctd.csv\n"
+                    "    timestamp: utc_time\n"
+                    "    pressure: pressure_dbar\n"
+                    "    temperature: temperature_c\n"
+                    "    turbidity: turbidity_ftu\n"
+                    "    interpolation_window: 2\n"
+                    "  - file: ex2503_dive01_nav.csv\n"
+                    "    timestamp: utc_time\n"
+                    "    latitude: latitude\n"
+                    "    longitude: longitude\n"
                     "\n"
                     "video_start_times:\n"
                     "  \"EX2503_VID_20250411T202459Z_ROVHD_Low.mp4\": \"2025-04-11T20:24:59Z\"\n"
