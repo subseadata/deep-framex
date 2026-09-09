@@ -96,6 +96,11 @@ def cmd_plan(args: argparse.Namespace) -> int:
         session = create_video_session(discover_videos(video_source, spec.video_start_times))
         conn = create_session_db()
 
+        if args.data and spec.mappings is None:
+            raise ValueError(
+                "A CSV file was provided (--data) but the spec has no 'mappings' block. "
+                "Add mappings (including 'timestamp') or omit --data."
+            )
         if args.data:
             import_csv(
                 Path(args.data), conn, spec.mappings,
