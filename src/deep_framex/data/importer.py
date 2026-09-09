@@ -14,8 +14,12 @@ everywhere downstream: in constraint rules, filename templates, and metadata
 output.  The right-side CSV column names are only used here at import time
 and are not stored anywhere.
 
-Timestamps are parsed as ISO 8601 UTC and stored as Unix epoch floats for
-efficient range queries during planning.  All sensor values must be numeric.
+Timestamps are parsed as ISO 8601, or with the strptime format given by
+mappings.timestamp_format, and stored as Unix epoch floats for efficient range
+queries during planning.  Timestamps without a timezone are assumed to be UTC.
+The time reference may live in one column or be split across several (e.g.
+separate date and time columns), in which case the cells are joined with a
+single space before parsing.  All sensor values must be numeric.
 
 If the sensor logger's clock was offset from the video clock, time_shift or
 start_time realign the imported timestamps — see import_csv.
@@ -24,6 +28,7 @@ start_time realign the imported timestamps — see import_csv.
 import csv
 import re
 import sqlite3
+import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -43,7 +48,7 @@ def import_csv(
     Reads only the columns named in mappings spec from YAML.  Canonical 
     names (the keys of mappings) become the DB column names.  The
     timestamp column is always stored as 'timestamp' in the DB regardless 
-    of its CSV column name.
+    of its CSV column name(s).
 
     Args:
         path:     path to the CSV file.
@@ -69,7 +74,8 @@ def import_csv(
         FileNotFoundError: if path does not exist.
         ValueError: if any mapped CSV column is not found in the CSV headers.
         ValueError: if any canonical name fails SQL identifier validation.
-        ValueError: if any timestamp string is not valid ISO 8601 UTC.
+        ValueError: if any timestamp string matches neither ISO 8601 nor
+            mappings.timestamp_format.
         ValueError: if any sensor cell cannot be cast to float.
         ValueError: if the CSV contains no data rows.
     """
@@ -87,16 +93,21 @@ def import_csv(
     # Canonical names become DB column names — must be valid SQL identifiers
     _validate_columns(list(canonical_to_csv.keys()))
 
+    ts_cols = (
+        [mappings.timestamp] if isinstance(mappings.timestamp, str) else mappings.timestamp
+    )
+
     with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         headers = set(reader.fieldnames or [])
 
         # Verify all mapped CSV columns actually exist in the file
-        if mappings.timestamp not in headers:
-            raise ValueError(
-                f"Timestamp column {mappings.timestamp!r} not found in CSV. "
-                f"Available columns: {sorted(headers)}"
-            )
+        for ts_col in ts_cols:
+            if ts_col not in headers:
+                raise ValueError(
+                    f"Timestamp column {ts_col!r} not found in CSV. "
+                    f"Available columns: {sorted(headers)}"
+                )
         for canonical, csv_col in canonical_to_csv.items():
             if csv_col not in headers:
                 raise ValueError(
@@ -109,7 +120,9 @@ def import_csv(
         rows: list[tuple] = []
         timestamps: list[float] = []
         for i, row in enumerate(reader):
-            ts = _parse_timestamp(row[mappings.timestamp])
+            ts = _parse_timestamp(
+                " ".join(row[c] for c in ts_cols), mappings.timestamp_format
+            )
 
             sensor_vals: list[float] = []
             for canonical, csv_col in canonical_to_csv.items():
@@ -178,23 +191,49 @@ def _validate_columns(columns: list[str]) -> None:
             )
 
 
-def _parse_timestamp(value: str) -> float:
-    """Parse an ISO 8601 UTC timestamp string to a Unix epoch float.
+_AUTO_FORMATS = ("%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M")
+
+
+def _parse_timestamp(value: str, fmt: str | None = None) -> float:
+    """Parse a timestamp string to a Unix epoch float.
 
     Args:
-        value: ISO 8601 string with an explicit UTC offset (Z or +00:00).
+        value: the timestamp string.  If the time reference is split across
+               several CSV columns, the cells joined with a single space.
+        fmt:   strptime format to parse value with.  If None, ISO 8601 is
+               tried first, then the unambiguous formats in _AUTO_FORMATS.
+               Day-first and month-first slash dates are indistinguishable,
+               so those always need an explicit fmt.
 
     Returns:
         Seconds since Unix epoch as a float.
 
     Raises:
-        ValueError: if the string is not parseable as a datetime.
-        ValueError: if the parsed datetime has no timezone info (naive).
+        ValueError: if the string matches neither ISO 8601 nor fmt.
     """
-    dt = datetime.fromisoformat(value)
+    if fmt is not None:
+        dt = datetime.strptime(value, fmt)
+    else:
+        for f in (None, *_AUTO_FORMATS):
+            try:
+                dt = (
+                    datetime.fromisoformat(value)
+                    if f is None
+                    else datetime.strptime(value, f)
+                )
+                break
+            except ValueError:
+                continue
+        else:
+            raise ValueError(
+                f"Cannot parse timestamp {value!r}. Add 'timestamp_format' to the "
+                "mappings block with a strptime format, e.g. '%d/%m/%Y %H:%M:%S'."
+            )
     if dt.tzinfo is None:
-        raise ValueError(f"Timestamp is not UTC-aware: {value!r}")
-    # TODO: warn if tzinfo is not UTC — non-UTC timezones are accepted and converted
-    # correctly, but users may not realise their data is being shifted. A UserWarning
-    # here would help catch accidental local-time submissions.
+        warnings.warn(
+            "Sensor timestamps have no timezone — assuming UTC.",
+            UserWarning,
+            stacklevel=2,
+        )
+        dt = dt.replace(tzinfo=timezone.utc)
     return dt.timestamp()

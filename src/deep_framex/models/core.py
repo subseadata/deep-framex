@@ -58,7 +58,13 @@ class ColumnMappings(CustomBaseModel):
     and metadata output.
 
     timestamp is required — the user must always say which CSV column holds
-    the time reference.  latitude, longitude, and depth are optional named
+    the time reference.  It may be a list of column names when the reference
+    is split across columns (e.g. ["Date", "Time"]), in which case the cells
+    are joined with a single space before parsing.  timestamp_format is a
+    strptime format for the joined value; omit it for ISO 8601 or dotted
+    DD.MM.YYYY dates, which are recognised automatically.
+
+    latitude, longitude, and depth are optional named
     fields; using these exact names triggers automatic routing to EXIF GPS
     tags and iFDO manifest fields.  Any additional entries the user supplies
     (e.g. temperature, salinity) are accepted and written to XMP.
@@ -66,7 +72,8 @@ class ColumnMappings(CustomBaseModel):
 
     model_config = ConfigDict(extra='allow')
 
-    timestamp: str                          # required — CSV column name for the UTC timestamp
+    timestamp: str | list[str]              # required — CSV column name(s) for the UTC timestamp
+    timestamp_format: str | None = None     # strptime format; omit for ISO 8601 or DD.MM.YYYY
     latitude: str | None = None             # CSV column name for latitude (decimal degrees)
     longitude: str | None = None            # CSV column name for longitude (decimal degrees)
     depth: str | None = None                # CSV column name for depth (metres, positive)
@@ -86,7 +93,7 @@ class ImportedDataset(CustomBaseModel):
     the timestamp source; in the DB it is always stored as 'timestamp'.
     """
     columns: list[str]          # canonical sensor column names in the DB, excluding timestamp
-    timestamp_column: str       # original CSV column name used as the timestamp source
+    timestamp_column: str | list[str]   # original CSV column name(s) used as the timestamp source
     row_count: int
     utc_start: datetime
     utc_end: datetime

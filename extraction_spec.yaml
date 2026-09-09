@@ -141,6 +141,24 @@ rules:
 #   # required — which column in your CSV holds the UTC timestamp
 #   timestamp:   Timestamp
 #
+#   # If your date and time live in separate columns, list them instead.  The
+#   # cells are joined with a single space before parsing:
+#   #   timestamp: [Date, Time]
+#
+#   # ISO 8601 timestamps (2025-10-15T10:00:00Z, or with a space instead of the
+#   # T, with or without fractional seconds) and dotted dates (01.09.2022
+#   # 00:00:00) are recognised automatically.  For anything else, give the
+#   # strptime format for the whole value:
+#   #   timestamp_format: "%d/%m/%Y %H:%M:%S"
+#   #
+#   # Slash-separated dates ALWAYS need timestamp_format — 01/09/2022 is
+#   # 1 September in some files and 9 January in others, and nothing in the
+#   # file says which, so the tool will not guess.
+#
+#   # Timestamps with no timezone marker are assumed to be UTC (the tool warns
+#   # once when this happens).  If they are not UTC, correct them with
+#   # sensor_time_shift or sensor_start_time above.
+#
 #   # use these exact names on the left for automatic EXIF + iFDO output
 #   latitude:    Latitude_ddeg     # decimal degrees only (e.g. -44.2895); negative = south
 #                                   # DMS and degrees-decimal-minutes are not supported — convert first

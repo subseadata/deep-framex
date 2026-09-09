@@ -103,7 +103,7 @@ rules:
 Conceptual diagram showing the difference between unioned (purple circles) and intersected (blue diamonds) extraction rules, across a depth constraint (teal) and a time period (orange). Intersected single rules will only extract within the overlapping area (dashed box). Unioned rules will extract anywhere a rule condition is met.
 
 
-**All timestamps must be ISO 8601 with an explicit UTC offset (`Z` or `+00:00`).**
+**All timestamps in the spec itself — `periods`, `video_start_times`, `sensor_start_time` — must be ISO 8601 with an explicit UTC offset (`Z` or `+00:00`).** Timestamps inside your sensor CSV are more forgiving; see **Timestamp formats** below.
 
 ### Sensor mappings
 
@@ -134,6 +134,31 @@ These left-side names trigger automatic routing to specific metadata fields:
 
 
 Any other name is written to XMP only. Only the columns you list are loaded, everything else in the CSV is ignored.
+
+### Timestamp formats
+
+Your timestamp column is read as ISO 8601 by default — `2025-11-15T10:25:00Z`, a space in place of the `T`, and any number of fractional-second digits all work, with or without an offset. Dot-separated dates (`15.11.2025 10:25:00`) are recognised too.
+
+Anything else needs `timestamp_format`, a strptime format for the whole value:
+
+```yaml
+mappings:
+  timestamp:        "Date / Time"
+  timestamp_format: "%d/%m/%Y %H:%M"
+  depth:            PRESSURE_m
+```
+
+**Slash-separated dates always need `timestamp_format`.** `01/09/2022` is 1 September in some loggers and 9 January in others, and nothing inside the file says which. The tool will not guess, because a wrong guess is silent — you get frames tagged eight months off with no error.
+
+If your date and time sit in separate columns, list them. The cells are joined with a single space and parsed as one value:
+
+```yaml
+mappings:
+  timestamp:        [Date, Time]
+  timestamp_format: "%d/%m/%Y %H:%M:%S"
+```
+
+Timestamps with no timezone marker are assumed to be UTC, and the tool warns once per run when that happens. If they are not UTC, correct them with `sensor_time_shift` or `sensor_start_time` — see **Aligning sensor time to video time** below.
 
 ### Other spec options
 
@@ -208,6 +233,12 @@ uv run python src/deep_framex/utils/gpgga_to_csv.py nav.RAW nav.csv
 `cnv_to_csv.py` reads a Sea-Bird `.cnv` CTD cast; `gpgga_to_csv.py` reads a
 logger's `$GPGGA` NMEA log and converts the ddmm.mmmm positions to signed
 decimal degrees.
+
+Reach for a converter when the file is not tabular — no header row, a header
+buried in a comment block, or a time base that is not a calendar timestamp (a
+Sea-Bird `.cnv` counts seconds from 2000-01-01, not the Unix epoch). A
+comma-delimited file with a header row imports directly whatever its date
+layout, so long as you name the format — see **Timestamp formats** above.
 
 A run takes exactly one CSV, so if your positions and your CTD readings are in
 separate files, join them into one before extracting: one row per timestamp,
@@ -376,7 +407,7 @@ src/deep_framex/
 - extract frames from cloud-hosted video files (avoid downloading them — stream only what's needed)
 - extract frames from mov files or mp4 files
 - extract frames and name them per an arbitrary file naming scheme *(e.g., frame1, frame2; FKt999901_S9999_T23:30:01, FKt999901_S9999_1200m_T11:35:24)*
-- import data *(csv with timestamp, plus alignment of timestamps)*
+- import data *(csv with one timestamp column or separate date and time columns, ISO 8601 or a format I name, plus alignment of timestamps)*
 - view and evaluate data *(plot variables for selecting data bounds for extraction)*
 - attach metadata to extracted frames *(embedded in the image file — EXIF, IPTC)*
 - attach geospatial data to extracted frames *(interpolated from log, embedded as standard GPS EXIF tags)*

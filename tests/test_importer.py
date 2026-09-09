@@ -61,15 +61,16 @@ def test_non_numeric_sensor_raises(conn, tmp_path):
     with pytest.raises(ValueError):
         dataset = import_csv(p, conn, mappings)
 
-# Naive timestamp (no timezone) raises.
-def test_naive_timestamp_raises(conn, tmp_path):
-    p = tmp_path / "bad.csv"
+# Naive timestamp (no timezone) is assumed UTC.
+def test_naive_timestamp_assumed_utc(conn, tmp_path):
+    p = tmp_path / "naive.csv"
     p.write_text("Timestamp,Depth_m,Temp_C\n"
                "2025-10-15T10:00:00,371.2,2.0\n"
                "2025-10-15T10:00:30,372.5,1.9\n")
     mappings = ColumnMappings(timestamp="Timestamp", depth="Depth_m")
-    with pytest.raises(ValueError):
-        dataset = import_csv(p, conn, mappings)
+    dataset = import_csv(p, conn, mappings)
+    assert dataset.utc_start == datetime(2025, 10, 15, 10, 0, 0, tzinfo=timezone.utc)
+    assert dataset.utc_end == datetime(2025, 10, 15, 10, 0, 30, tzinfo=timezone.utc)
 
 # Empty CSV (headers only, no data rows) raises.
 def test_empty_csv_raises(conn, tmp_path):

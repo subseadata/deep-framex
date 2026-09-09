@@ -103,6 +103,19 @@ def _(mo, yaml_block):
         """),
         mo.md("""
       - **and as always, timestamps are required in our sensor data**
+
+    ### Timestamps
+    - Read as ISO 8601 by default: `yyyy-mm-ddThh:mm:ssZ`, a space in place of the `T`, fractional seconds, offset or none
+    - No timezone marker means UTC, and deep-framex says so once per run
+    - Any other layout needs a **timestamp_format** in the **mappings** block — a strptime format for the whole value
+    - Slash-separated dates *always* need it: `01/09/2022` is 1 September to some loggers and 9 January to others
+    - A date column and a time column can be listed together, and are joined with a single space
+        """),
+        yaml_block("""
+    mappings:
+      timestamp:        [Date, Time]
+      timestamp_format: "%d/%m/%Y %H:%M:%S"
+      temperature:      temp_C
         """),
     ])
     return
