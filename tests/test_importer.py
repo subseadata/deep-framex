@@ -134,3 +134,62 @@ def test_shift_preserves_sensor_values(conn, csv_path):
     import_csv(csv_path, conn, mappings, time_shift=timedelta(minutes=90))
     rows = conn.execute("SELECT depth FROM sensor_readings ORDER BY timestamp").fetchall()
     assert [r[0] for r in rows] == [371.2, 372.5]
+
+
+# Two CSVs load into separate tables in one session, each keeping its own rows.
+# A single shared table could not work: timestamp is the primary key and the
+# two files do not sample on the same instants.
+def test_two_csvs_load_into_separate_tables(conn, tmp_path):
+    ctd = tmp_path / "ctd.csv"
+    ctd.write_text("Timestamp,Depth_m\n"
+                   "2025-10-15T10:00:00Z,371.2\n"
+                   "2025-10-15T10:00:30Z,372.5\n")
+    nav = tmp_path / "nav.csv"
+    nav.write_text("Timestamp,Lat\n"
+                   "2025-10-15T10:00:07Z,27.11\n"
+                   "2025-10-15T10:00:17Z,27.12\n"
+                   "2025-10-15T10:00:27Z,27.13\n")
+
+    first = import_csv(ctd, conn, ColumnMappings(timestamp="Timestamp", depth="Depth_m"),
+                       table="sensor_readings_0")
+    second = import_csv(nav, conn, ColumnMappings(timestamp="Timestamp", latitude="Lat"),
+                        table="sensor_readings_1")
+
+    assert first.columns == ["depth"]
+    assert second.columns == ["latitude"]
+    assert conn.execute("SELECT COUNT(*) FROM sensor_readings_0").fetchone()[0] == 2
+    assert conn.execute("SELECT COUNT(*) FROM sensor_readings_1").fetchone()[0] == 3
+
+
+# The same timestamp in two files is not a primary-key collision, because the
+# files never share a table.
+def test_identical_timestamps_across_files_do_not_collide(conn, tmp_path):
+    for name, col in (("a.csv", "Depth_m"), ("b.csv", "Lat")):
+        p = tmp_path / name
+        p.write_text(f"Timestamp,{col}\n2025-10-15T10:00:00Z,1.0\n")
+
+    import_csv(tmp_path / "a.csv", conn,
+               ColumnMappings(timestamp="Timestamp", depth="Depth_m"),
+               table="sensor_readings_0")
+    import_csv(tmp_path / "b.csv", conn,
+               ColumnMappings(timestamp="Timestamp", latitude="Lat"),
+               table="sensor_readings_1")
+
+    assert conn.execute("SELECT timestamp FROM sensor_readings_0").fetchone() == \
+           conn.execute("SELECT timestamp FROM sensor_readings_1").fetchone()
+
+
+# Each file's own shift is applied to that file alone.
+def test_per_file_time_shift_is_independent(conn, tmp_path):
+    for name in ("a.csv", "b.csv"):
+        (tmp_path / name).write_text("Timestamp,Val\n2025-10-15T10:00:00Z,1.0\n")
+
+    shifted = import_csv(tmp_path / "a.csv", conn,
+                         ColumnMappings(timestamp="Timestamp", depth="Val"),
+                         time_shift=timedelta(minutes=-3), table="sensor_readings_0")
+    plain = import_csv(tmp_path / "b.csv", conn,
+                       ColumnMappings(timestamp="Timestamp", latitude="Val"),
+                       table="sensor_readings_1")
+
+    assert shifted.utc_start == datetime(2025, 10, 15, 9, 57, 0, tzinfo=timezone.utc)
+    assert plain.utc_start == datetime(2025, 10, 15, 10, 0, 0, tzinfo=timezone.utc)
