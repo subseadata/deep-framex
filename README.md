@@ -18,7 +18,7 @@ pip install -e .
 
 ## Demo
 
-Worked examples live in `notebooks/marimo/`, a hands-on workshop that runs deep-framex end to end. It ships with its own sample video (`clip.mp4`) and sensor logs (`sensor.csv`, the CTD records `ex2503_rovctd.csv` / `ex2503_rovctd_badclock.csv`, and the merged CTD+nav record `ex2503_dive01_sensors.csv`). Work through them in order:
+Worked examples live in `notebooks/marimo/`, a hands-on workshop that runs deep-framex end to end. It ships with its own sample video (`clip.mp4`) and sensor logs (`sensor.csv`, the CTD records `ex2503_rovctd.csv` / `ex2503_rovctd_badclock.csv`, the nav record `ex2503_dive01_nav.csv`, and the hand-joined CTD+nav record `ex2503_dive01_sensors.csv`). Work through them in order:
 
 | Notebook | What it covers |
 |---|---|
@@ -52,7 +52,7 @@ deep-framex <source> --spec <yaml> [--data <csv>] [--output <dir>]
 |---|---|
 | `source` | Directory of video files, or one or more explicit video paths |
 | `--spec` | Path to a YAML extraction spec (required) |
-| `--data` | Path to a sensor CSV file (optional) |
+| `--data` | Path to a single sensor CSV (optional; for several files use a `sensors` block in the spec) |
 | `--output` | Output directory for extracted frames (default: `./frames`) |
 
 
@@ -135,6 +135,39 @@ These left-side names trigger automatic routing to specific metadata fields:
 
 Any other name is written to XMP only. Only the columns you list are loaded, everything else in the CSV is ignored.
 
+### Several sensor files
+
+When the readings are spread across more than one file, list each one in a `sensors` block instead of using `mappings` + `--data`. Each entry names its own file, its own timestamp column, and its own mappings:
+
+```yaml
+sensors:
+  - file: ctd.csv
+    timestamp: utc_time
+    depth: Depth_m
+    temperature: Temp_degC
+  - file: nav.csv
+    timestamp: [Date, Time]
+    timestamp_format: "%d/%m/%Y %H:%M:%S"
+    latitude: Lat_ddeg
+    longitude: Lon_ddeg
+```
+
+Each file is read on its own timestamps and interpolated separately, then the results are merged into one set of values per frame. The files need not share a sample rate or a start time, and there is no need to join them yourself.
+
+The left-side names all land in one shared namespace, so **two entries may not map the same name** — that would silently overwrite one file's values with the other's. Rename one side (`ctd_depth` and `nav_depth`). The spec is rejected at parse time, naming both files and the clashing key.
+
+Each entry can also carry:
+
+| Key | Meaning |
+|---|---|
+| `time_shift` | Signed `"HH:MM:SS"` added to this file's timestamps — the per-file `sensor_time_shift` |
+| `start_time` | ISO 8601 UTC time to place this file's earliest reading at — the per-file `sensor_start_time` |
+| `interpolation_window` | Rows per side for this file; omit to use the spec-level value |
+
+`time_shift` and `start_time` are mutually exclusive per entry, as at spec level. `interpolation_window` is per file because window size only means something relative to a file's sample rate: 2 rows span about 2 s on a 1 Hz CTD but 20 s on a nav fix arriving every 10 s.
+
+A single `mappings` block plus `--data` is the one-file shorthand for a one-entry `sensors` list. Both forms are supported; use whichever fits.
+
 ### Timestamp formats
 
 Your timestamp column is read as ISO 8601 by default — `2025-11-15T10:25:00Z`, a space in place of the `T`, and any number of fractional-second digits all work, with or without an offset. Dot-separated dates (`15.11.2025 10:25:00`) are recognised too.
@@ -158,6 +191,8 @@ mappings:
   timestamp_format: "%d/%m/%Y %H:%M:%S"
 ```
 
+With a `sensors` block each entry names its own `timestamp` and `timestamp_format`, so files written by different loggers in different date layouts can be mixed in one run.
+
 Timestamps with no timezone marker are assumed to be UTC, and the tool warns once per run when that happens. If they are not UTC, correct them with `sensor_time_shift` or `sensor_start_time` — see **Aligning sensor time to video time** below.
 
 ### Other spec options
@@ -167,7 +202,7 @@ Timestamps with no timezone marker are assumed to be UTC, and the tool warns onc
 | `metadata` | — | Arbitrary key/value pairs embedded in every frame (EXIF, IPTC, XMP, iFDO) |
 | `filename_template` | `{utc}_{video_stem}.jpg` | Output filename pattern — variables: `{utc}`, `{video_stem}`, `{offset_s}`, any mapping key, any metadata key |
 | `initial_offset_s` | `0.0` | Shift the sampling grid this many seconds from session start |
-| `interpolation_window` | `2` | Sensor rows to use on each side when interpolating values |
+| `interpolation_window` | `2` | Sensor rows to use on each side when interpolating values; each `sensors` entry may override it |
 | `stream_output` | `false` | Write each frame immediately instead of buffering per video |
 | `max_workers` | `1` | Worker processes for extraction; `>1` extracts multiple videos in parallel |
 | `xmp_namespace_uri` | `https://deep-framex.org/xmp/v1/` | URI for the custom XMP namespace |
@@ -175,6 +210,7 @@ Timestamps with no timezone marker are assumed to be UTC, and the tool warns onc
 | `video_start_times` | — | Map of video filename → ISO 8601 UTC start time, for footage whose `creation_time` tag is missing or wrong |
 | `sensor_time_shift` | — | Signed `"HH:MM:SS"` added to every sensor timestamp, for a sensor clock that ran ahead or behind |
 | `sensor_start_time` | — | ISO 8601 UTC time to place the earliest sensor reading at; all readings shift by the same amount |
+| `sensors` | — | One entry per sensor CSV, each with its own file, timestamp column, mappings, clock correction, and interpolation window — see **Several sensor files** |
 
 
 **Highly Reccommended:** always include `{utc}` in your filename template. The planner guarantees unique timestamps, so `{utc}` guarantees unique filenames. Templates that omit it may silently overwrite frames.
@@ -213,11 +249,15 @@ sensor_start_time: "2025-11-15T10:00:00Z"
 
 The two are alternative ways to say the same thing; setting both is an error. Both preserve the spacing between readings and neither corrects clock drift.
 
+Both keys apply to the whole run, which is what you want with a single sensor file. With a `sensors` block each logger had its own clock, so put the correction on the entry as `time_shift` or `start_time` — see **Several sensor files** above.
+
 Use `--plan` to check an alignment before extracting anything. It prints the interpolated sensor values for every planned frame without decoding a single one:
 
 ```
 deep-framex video/ --spec spec.yaml --data sensors.csv --plan
 ```
+
+With a `sensors` block the paths are already in the spec, so `--data` is omitted and each frame's printed values are the merged snapshot from every source.
 
 ## Converting raw sensor logs
 
@@ -240,12 +280,15 @@ Sea-Bird `.cnv` counts seconds from 2000-01-01, not the Unix epoch). A
 comma-delimited file with a header row imports directly whatever its date
 layout, so long as you name the format — see **Timestamp formats** above.
 
-A run takes exactly one CSV, so if your positions and your CTD readings are in
-separate files, join them into one before extracting: one row per timestamp,
-every mapped column populated on every row. Blank cells are rejected, not
-treated as missing — see `08-playground.py`, whose
-`ex2503_dive01_sensors.csv` is a CTD record with nav fixes interpolated onto the
-same 1 s grid.
+A run can take any number of CSVs, so positions and CTD readings in separate
+files each get their own entry in a `sensors` block — no joining needed. See
+**Several sensor files** above, and `08-playground.py`, which reads
+`ex2503_rovctd.csv` and `ex2503_dive01_nav.csv` that way.
+
+Within a single file, every mapped column must be populated on every row.
+Blank cells are rejected, not treated as missing. If two instruments write to
+one file at different rates, either split them into two files or fill the
+gaps.
 
 ## Output
 
@@ -283,7 +326,7 @@ extract(
     spec_path=Path("spec.yaml"),
     video_source=Path("video/"),
     output_dir=Path("frames/"),
-    csv_path=Path("sensors.csv"),   # omit if no sensor data
+    csv_path=Path("sensors.csv"),   # omit if no sensor data, or if the spec has a sensors block
 )
 ```
 
@@ -293,7 +336,12 @@ extract(
 spec    = spec_from_file("spec.yaml")
 session = create_video_session(discover_videos(Path("video/"), spec.video_start_times))
 conn    = create_session_db()
-import_csv(csv_path, conn, spec.mappings)
+
+# One table per sensor file; plan() derives the same names from spec.sensors.
+for i, source in enumerate(spec.sensors):
+    import_csv(source.file, conn, source, source.time_shift, source.start_time,
+               f"sensor_readings_{i}")
+
 plans   = plan(spec, session, conn)
 close_session_db(conn)
 
@@ -407,7 +455,7 @@ src/deep_framex/
 - extract frames from cloud-hosted video files (avoid downloading them — stream only what's needed)
 - extract frames from mov files or mp4 files
 - extract frames and name them per an arbitrary file naming scheme *(e.g., frame1, frame2; FKt999901_S9999_T23:30:01, FKt999901_S9999_1200m_T11:35:24)*
-- import data *(csv with one timestamp column or separate date and time columns, ISO 8601 or a format I name, plus alignment of timestamps)*
+- import data *(one or many csvs, each with one timestamp column or separate date and time columns, ISO 8601 or a format I name, plus alignment of timestamps)*
 - view and evaluate data *(plot variables for selecting data bounds for extraction)*
 - attach metadata to extracted frames *(embedded in the image file — EXIF, IPTC)*
 - attach geospatial data to extracted frames *(interpolated from log, embedded as standard GPS EXIF tags)*

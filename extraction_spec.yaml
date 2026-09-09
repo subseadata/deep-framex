@@ -18,6 +18,9 @@
 #
 # Usage:
 #   deep-framex <source> --spec extraction_spec.yaml [--data sensors.csv] [--output ./frames]
+#
+# --data passes a single sensor CSV.  For several sensor files, list them in the
+# sensors block below and omit --data.
 
 
 # ---------------------------------------------------------------------------
@@ -97,13 +100,18 @@ rules:
 # error.  Both preserve the spacing between readings; neither corrects clock
 # drift.  Check an alignment with --plan before extracting: it prints the
 # interpolated sensor values per planned frame without decoding any.
+#
+# Both keys correct the whole run, which is what you want with a single sensor
+# file.  If you use a sensors block (below), each logger had its own clock —
+# put the correction on the entry as time_shift or start_time instead.
 
 
 # ---------------------------------------------------------------------------
-# MAPPINGS (required only if a sensor CSV is provided)
+# MAPPINGS (required only if a single sensor CSV is provided with --data)
 # ---------------------------------------------------------------------------
 #
 # Tell the tool which columns to read from your CSV and what to call them.
+# For more than one sensor CSV, use the SENSORS block below instead.
 #
 #     name_for_this_tool: Column Name In Your CSV
 #
@@ -175,6 +183,57 @@ rules:
 #   temperature: Temp_degC
 #   salinity:    Salinity_psu
 #   velocityfwd: VelocityFwd_m/s   # the right side can have slashes, the left cannot
+
+
+# ---------------------------------------------------------------------------
+# SENSORS (use instead of mappings when you have more than one sensor CSV)
+# ---------------------------------------------------------------------------
+#
+# Nav fixes and CTD readings are often logged to separate files.  Rather than
+# joining them yourself, give each file its own entry here.  Every entry takes
+# the same mapping keys as the mappings block above, plus the file to read.
+#
+# sensors:
+#
+#   - file: ctd.csv
+#     timestamp:   utc_time
+#     depth:       Depth_m
+#     temperature: Temp_degC
+#
+#   - file: nav.csv
+#     timestamp:        [Date, Time]
+#     timestamp_format: "%d/%m/%Y %H:%M:%S"
+#     latitude:         Lat_ddeg
+#     longitude:        Lon_ddeg
+#
+# Each file is read on its own timestamps and interpolated separately, then the
+# results are merged into one set of values per frame.  The files need not share
+# a sample rate or a start time, and each names its own timestamp column and
+# format, so files from different loggers can be mixed in one run.
+#
+# The left-side names all land in one shared set, so TWO ENTRIES MAY NOT MAP THE
+# SAME NAME — one file's values would silently overwrite the other's.  Rename one
+# side (e.g. "ctd_depth" and "nav_depth").  The spec is rejected before any CSV
+# is read, naming both files and the clashing key.
+#
+# A single mappings block plus --data is the one-file shorthand for a one-entry
+# sensors list.  Both forms work; use whichever fits.
+#
+# Each entry may also carry these three keys:
+#
+#   time_shift            this file's own sensor_time_shift (see above)
+#   start_time            this file's own sensor_start_time (see above)
+#   interpolation_window  this file's own window (see below)
+#
+# Each logger had its own clock, so the correction belongs on the file:
+#
+#   - file: ctd.csv
+#     timestamp: utc_time
+#     depth:     Depth_m
+#     time_shift: "-00:03:00"    # QUOTE IT — see the warning above
+#
+# time_shift and start_time are mutually exclusive within an entry, exactly as
+# the spec-level keys are with each other.
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +347,12 @@ rules:
 # nearest available readings rather than fail.
 #
 # interpolation_window: 2
+#
+# This value is the default for every sensor file, and each entry in a sensors
+# block may override it.  Window size only means something relative to a file's
+# sample rate: 2 rows span about 2 s on a 1 Hz CTD but 20 s on a nav fix that
+# arrives every 10 s.  A file whose readings change fast wants a smaller window
+# than one logged slowly.
 
 
 # ---------------------------------------------------------------------------
