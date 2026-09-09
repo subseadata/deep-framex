@@ -231,3 +231,129 @@ def test_sensor_shift_and_start_time_together_raises():
             "sensor_time_shift": "00:01:00",
             "sensor_start_time": "2025-11-15T10:00:00Z",
         })
+
+
+# A sensors block: each entry keeps its own file, timestamp, and mappings.
+def test_sensors_parsed():
+    spec = spec_from_dict({
+        "rules": [{"interval_s": 10.0}],
+        "sensors": [
+            {"file": "ctd.csv", "timestamp": "utc_time", "depth": "Depth_m",
+             "temperature": "Temp_C"},
+            {"file": "nav.csv", "timestamp": ["Date", "Time"],
+             "timestamp_format": "%d/%m/%Y %H:%M:%S",
+             "latitude": "Lat_ddeg", "longitude": "Lon_ddeg"},
+        ],
+    })
+    assert [str(s.file) for s in spec.sensors] == ["ctd.csv", "nav.csv"]
+    assert spec.sensors[0].timestamp == "utc_time"
+    assert spec.sensors[0].depth == "Depth_m"
+    assert spec.sensors[0].model_extra == {"temperature": "Temp_C"}
+    assert spec.sensors[1].timestamp == ["Date", "Time"]
+    assert spec.sensors[1].timestamp_format == "%d/%m/%Y %H:%M:%S"
+
+
+# A spec with no sensors block gets an empty list, not None.
+def test_sensors_absent_is_empty():
+    assert spec_from_dict({"rules": [{"interval_s": 10.0}]}).sensors == []
+
+
+# Per-entry alignment and window keys, each independent of the others.
+def test_sensor_entry_alignment_and_window_parsed():
+    spec = spec_from_dict({
+        "rules": [{"interval_s": 10.0}],
+        "sensors": [
+            {"file": "a.csv", "timestamp": "t", "depth": "D",
+             "time_shift": "-00:03:00", "interpolation_window": 4},
+            {"file": "b.csv", "timestamp": "t", "latitude": "Lat",
+             "start_time": "2025-11-15T10:00:00Z"},
+        ],
+    })
+    assert spec.sensors[0].time_shift == timedelta(minutes=-3)
+    assert spec.sensors[0].interpolation_window == 4
+    assert spec.sensors[0].start_time is None
+    assert spec.sensors[1].start_time == datetime(2025, 11, 15, 10, 0, 0, tzinfo=timezone.utc)
+    # Omitted, so the planner falls back to the spec-level value.
+    assert spec.sensors[1].interpolation_window is None
+
+
+# Both canonical names land in one snapshot, so a clash would silently
+# overwrite one file's values — reject it, naming both files and the key.
+def test_sensors_duplicate_canonical_name_raises():
+    with pytest.raises(ValueError, match="depth"):
+        spec_from_dict({
+            "rules": [{"interval_s": 10.0}],
+            "sensors": [
+                {"file": "a.csv", "timestamp": "t", "depth": "D1"},
+                {"file": "b.csv", "timestamp": "t", "depth": "D2"},
+            ],
+        })
+
+
+# The clash is rejected for extras too, not just the named fields.
+def test_sensors_duplicate_extra_name_raises():
+    with pytest.raises(ValueError, match="turbidity"):
+        spec_from_dict({
+            "rules": [{"interval_s": 10.0}],
+            "sensors": [
+                {"file": "a.csv", "timestamp": "t", "turbidity": "T1"},
+                {"file": "b.csv", "timestamp": "t", "turbidity": "T2"},
+            ],
+        })
+
+
+# timestamp and timestamp_format configure the file rather than name a sensor
+# column, so two entries may share them.
+def test_sensors_may_share_reserved_keys():
+    spec = spec_from_dict({
+        "rules": [{"interval_s": 10.0}],
+        "sensors": [
+            {"file": "a.csv", "timestamp": "utc_time", "timestamp_format": "%Y",
+             "depth": "D"},
+            {"file": "b.csv", "timestamp": "utc_time", "timestamp_format": "%Y",
+             "latitude": "Lat"},
+        ],
+    })
+    assert len(spec.sensors) == 2
+
+
+# file and timestamp are both required on every entry.
+@pytest.mark.parametrize("entry", [
+    {"timestamp": "t", "depth": "D"},
+    {"file": "a.csv", "depth": "D"},
+])
+def test_sensor_entry_missing_required_key_raises(entry):
+    with pytest.raises(ValueError, match="Sensor 0"):
+        spec_from_dict({"rules": [{"interval_s": 10.0}], "sensors": [entry]})
+
+
+# Per entry, the two alignment keys conflict exactly as the spec-level ones do.
+def test_sensor_entry_shift_and_start_time_together_raises():
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        spec_from_dict({
+            "rules": [{"interval_s": 10.0}],
+            "sensors": [{"file": "a.csv", "timestamp": "t", "depth": "D",
+                         "time_shift": "00:01:00",
+                         "start_time": "2025-11-15T10:00:00Z"}],
+        })
+
+
+# A per-entry start_time must be UTC-aware, like the spec-level key.
+def test_sensor_entry_naive_start_time_raises():
+    with pytest.raises(ValueError, match="UTC-aware"):
+        spec_from_dict({
+            "rules": [{"interval_s": 10.0}],
+            "sensors": [{"file": "a.csv", "timestamp": "t", "depth": "D",
+                         "start_time": "2025-11-15T10:00:00"}],
+        })
+
+
+# A per-entry window below 1 is clamped with a warning, as the top-level is.
+def test_sensor_entry_window_below_one_warns_and_clamps():
+    with pytest.warns(UserWarning, match="at least 1"):
+        spec = spec_from_dict({
+            "rules": [{"interval_s": 10.0}],
+            "sensors": [{"file": "a.csv", "timestamp": "t", "depth": "D",
+                         "interpolation_window": 0}],
+        })
+    assert spec.sensors[0].interpolation_window == 1

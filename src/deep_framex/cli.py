@@ -23,6 +23,7 @@ from .config.video_discovery import discover_videos
 from .db.session_db import create_session_db, close_session_db
 from .data.importer import import_csv
 from .extraction.video_session import create_video_session
+from .models.core import SensorSource
 from .pipeline import extract
 from .planning.planner import plan
 
@@ -96,10 +97,24 @@ def cmd_plan(args: argparse.Namespace) -> int:
         session = create_video_session(discover_videos(video_source, spec.video_start_times))
         conn = create_session_db()
 
-        if args.data:
+        if args.data and spec.mappings is None:
+            raise ValueError(
+                "A CSV file was provided (--data) but the spec has no 'mappings' block. "
+                "Add mappings (including 'timestamp') or omit --data."
+            )
+        # Same normalisation as pipeline stage 5 — --data plus a mappings block
+        # is the one-file shorthand for a one-entry sensors list.
+        if not spec.sensors and args.data and spec.mappings:
+            spec.sensors = [SensorSource(
+                file=Path(args.data),
+                time_shift=spec.sensor_time_shift,
+                start_time=spec.sensor_start_time,
+                **spec.mappings.model_dump(exclude_none=True),
+            )]
+        for i, source in enumerate(spec.sensors):
             import_csv(
-                Path(args.data), conn, spec.mappings,
-                spec.sensor_time_shift, spec.sensor_start_time,
+                source.file, conn, source, source.time_shift, source.start_time,
+                f"sensor_readings_{i}",
             )
 
         plans = plan(spec, session, conn)
@@ -142,7 +157,8 @@ def main() -> None:
         --spec      path to YAML extraction spec (required)
         --plan      dry-run: plan extraction without decoding frames
         --output    directory to write extracted frames (default: ./frames)
-        --data      path to sensor CSV file (optional)
+        --data      path to a single sensor CSV (optional; multi-file runs put
+                    the paths in the spec's 'sensors' block instead)
     """
     parser = argparse.ArgumentParser(
         prog="deep-framex",
@@ -171,7 +187,10 @@ def main() -> None:
         "--data",
         metavar="CSV",
         default=None,
-        help="Path to sensor CSV file (optional).",
+        help=(
+            "Path to a single sensor CSV (optional). For several sensor files, "
+            "list them in the spec's 'sensors' block instead."
+        ),
     )
     parser.add_argument(
         "--output",

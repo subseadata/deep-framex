@@ -34,8 +34,12 @@ def create_session_db() -> sqlite3.Connection:
     return sqlite3.connect(":memory:")
 
 
-def init_sensor_table(conn: sqlite3.Connection, columns: list[str]) -> None:
-    """Create the sensor_readings table with a schema derived from the CSV columns.
+def init_sensor_table(
+    conn: sqlite3.Connection,
+    columns: list[str],
+    table: str = "sensor_readings",
+) -> None:
+    """Create a sensor readings table with a schema derived from the CSV columns.
 
     The timestamp column is always the primary key, named 'timestamp' in the
     database regardless of the original CSV column name.  The importer maps
@@ -47,13 +51,16 @@ def init_sensor_table(conn: sqlite3.Connection, columns: list[str]) -> None:
     Args:
         conn:    active session database connection.
         columns: sensor column names to create, excluding the timestamp column.
+        table:   name of the table to create.  One table per sensor CSV, so
+                 each file keeps its own timestamp grid; the importer names
+                 them sensor_readings_0, sensor_readings_1, and so on.
 
     Raises:
         sqlite3.OperationalError: if the table already exists.
     """
     sensor_cols = "".join(f', "{col}" REAL NOT NULL' for col in columns)
     conn.execute(f"""
-        CREATE TABLE sensor_readings (
+        CREATE TABLE "{table}" (
             timestamp REAL PRIMARY KEY
             {sensor_cols}
         )

@@ -81,8 +81,9 @@ def _(mo, yaml_block):
     ### Constraints
     - Used to constrain extractions with sensor data
     - Requires
-      - Sensor csv passed as input with the `--data` flag:
+      - Sensor csv passed as input — one file with the `--data` flag:
       `deep-framex {SOURCE} --spec {SPEC} --data {SENSOR}`
+      — or any number of files listed in a **sensors** block in the spec
       - **constraint** block in the **rules** section of our **extraction spec** YAML file with our csv column and the min OR max OR both of the value:
         """),
         yaml_block("""
@@ -104,12 +105,31 @@ def _(mo, yaml_block):
         mo.md("""
       - **and as always, timestamps are required in our sensor data**
 
+    ### Several sensor files
+    - A **sensors** block replaces `mappings` + `--data` when the readings are spread across more than one file
+    - Each entry names its own file, its own timestamp column, and its own mappings — no need to join the files yourself
+    - Each file is read on its own timestamps, so they need not share a sample rate or a start time
+    - Two files may **not** map the same name; rename one side (`ctd_depth`, `nav_depth`)
+    - Each entry can also carry its own **time_shift** / **start_time** and its own **interpolation_window**
+        """),
+        yaml_block("""
+    sensors:
+      - file: ctd.csv
+        timestamp: time
+        temperature: temp_C
+      - file: nav.csv
+        timestamp: utc_time
+        latitude: latitude
+        longitude: longitude
+        """),
+        mo.md("""
     ### Timestamps
     - Read as ISO 8601 by default: `yyyy-mm-ddThh:mm:ssZ`, a space in place of the `T`, fractional seconds, offset or none
     - No timezone marker means UTC, and deep-framex says so once per run
     - Any other layout needs a **timestamp_format** in the **mappings** block — a strptime format for the whole value
     - Slash-separated dates *always* need it: `01/09/2022` is 1 September to some loggers and 9 January to others
     - A date column and a time column can be listed together, and are joined with a single space
+    - With a **sensors** block each entry names its own timestamp column and format, so files written by different loggers can be mixed in one run
         """),
         yaml_block("""
     mappings:

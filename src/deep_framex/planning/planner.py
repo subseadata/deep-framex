@@ -5,7 +5,8 @@ one per video, each containing the offsets (seconds from t=0) to extract.
 
 Also writes all planned frames into the session database frame_plan table,
 with a sensor_snapshot JSON blob of interpolated sensor values at each
-timestamp.  Downstream stages read from frame_plan; the extractor uses the
+timestamp.  Each sensor CSV lives in its own table and is interpolated
+independently, then the per-source results are merged into one flat snapshot.  Downstream stages read from frame_plan; the extractor uses the
 returned VideoExtractionPlan list.
 
 Rule composition:
@@ -51,9 +52,10 @@ def plan(
         spec:    one or more extraction rules with optional periods,
                  constraints, mappings, and project metadata.
         session: ordered list of probed VideoFiles covering the session.
-        conn:    active session database connection.  Used to query
-                 sensor_readings for constraint windows and to write
-                 the resulting frame_plan rows.
+        conn:    active session database connection.  Used to query the
+                 sensor readings tables for constraint windows and to write
+                 the resulting frame_plan rows.  The caller must already have
+                 imported spec.sensors into sensor_readings_0, _1, and so on.
 
     Returns:
         List of VideoExtractionPlan, one per video that has at least one
@@ -62,8 +64,8 @@ def plan(
     Raises:
         ValueError: if a planned timestamp falls outside the span of
                     the session.
-        ValueError: if a constraint references a column not present in
-                    sensor_readings.
+        ValueError: if a constraint references a column that was not imported
+                    from any sensor file.
     """
     init_frame_plan_table(conn)
 
@@ -73,19 +75,31 @@ def plan(
     # on the global grid, not separate grids with their own offsets.
     session_start = session.videos[0].utc_start
 
+    # Resolve the sensor sources once here — avoids repeated database lookups
+    # inside the per-frame loop below, and constraint checking needs the
+    # column-to-table map before any rule is processed.  Table names mirror the
+    # order the importer loaded spec.sensors in, and each source carries its own
+    # interpolation window because window size only means something relative to
+    # that file's sample rate.
+    sources = [
+        (
+            f"sensor_readings_{i}",
+            sensor_columns(conn, f"sensor_readings_{i}"),
+            src.interpolation_window or spec.interpolation_window,
+        )
+        for i, src in enumerate(spec.sensors)
+    ]
+    col_to_table = {col: table for table, cols, _ in sources for col in cols}
+
     # Use a set so that identical timestamps from different rules appear only once.
     # A timestamp claimed by two overlapping rules is deduplicated here — the
     # extractor will see it once and write one frame.
     all_timestamps: set[datetime] = set()
     for rule in spec.rules:
-        windows = _rule_windows(rule, session, conn)
+        windows = _rule_windows(rule, session, conn, col_to_table)
         all_timestamps.update(
             _sample_timestamps(windows, rule.interval_s, session_start, spec.initial_offset_s)
         )
-
-    # Check once here whether sensor data was loaded — avoids repeated database
-    # lookups inside the per-frame loop below.
-    sensor_cols = sensor_columns(conn)
 
     # video_frames accumulates FrameSpec objects per video, keeping offset and
     # sensor snapshot together so they can never get out of sync.
@@ -107,8 +121,16 @@ def plan(
             )
             continue
 
-        # Interpolate sensor readings at this exact timestamp.
-        snapshot = interpolate_sensor(utc.timestamp(), sensor_cols, conn, spec.interpolation_window) if sensor_cols else {}
+        # Interpolate each source's readings at this exact timestamp and merge.
+        # Every source is interpolated against its own rows on its own grid, so
+        # the files need not share a sample rate or a start time.  Merge order is
+        # irrelevant: the spec parser rejects two sources mapping the same name.
+        snapshot: dict[str, float] = {}
+        for table, cols, window in sources:
+            if cols:
+                snapshot.update(
+                    interpolate_sensor(utc.timestamp(), cols, conn, window, table)
+                )
 
         # Keep offset and snapshot together in a FrameSpec — the plan is self-contained
         # and the extractor needs no database access.
@@ -151,6 +173,7 @@ def _rule_windows(
     rule: ExtractionRule,
     session: VideoSession,
     conn: sqlite3.Connection,
+    col_to_table: dict[str, str],
 ) -> list[TimePeriod]:
     """Compute the effective time windows for a single extraction rule.
 
@@ -161,9 +184,10 @@ def _rule_windows(
     windows.  Returns whatever time ranges remain after all intersections.
 
     Args:
-        rule:    an ExtractionRule with optional periods and constraints.
-        session: VideoSession used to determine the full session span.
-        conn:    session database connection for constraint queries.
+        rule:         an ExtractionRule with optional periods and constraints.
+        session:      VideoSession used to determine the full session span.
+        conn:         session database connection for constraint queries.
+        col_to_table: canonical column name to the sensor table holding it.
 
     Returns:
         List of TimePeriod representing the effective windows for this
@@ -183,7 +207,9 @@ def _rule_windows(
     # Narrow the windows one constraint at a time.
     # If no windows survive an intersection, stop early — nothing left to sample.
     for constraint in rule.constraints:
-        windows = _intersect_windows(windows, _constraint_windows(constraint, conn))
+        windows = _intersect_windows(
+            windows, _constraint_windows(constraint, conn, col_to_table)
+        )
         if not windows:
             break
 
@@ -193,51 +219,44 @@ def _rule_windows(
 def _constraint_windows(
     constraint: ExtractionRule.SensorConstraint,
     conn: sqlite3.Connection,
+    col_to_table: dict[str, str],
 ) -> list[TimePeriod]:
-    """Query sensor_readings for contiguous time ranges where a constraint is met.
+    """Query a source's readings for contiguous ranges where a constraint is met.
 
-    Scans the sensor_readings table in timestamp order.  Each row is tested
-    against the constraint bounds; consecutive qualifying rows are grouped into
-    a single TimePeriod whose start and end are the first and last qualifying
-    timestamps in that run.
+    Scans the table holding the constrained column in timestamp order.  Each
+    row is tested against the constraint bounds; consecutive qualifying rows are
+    grouped into a single TimePeriod whose start and end are the first and last
+    qualifying timestamps in that run.
 
     Args:
-        constraint: an ExtractionRule.SensorConstraint with column, min, max.
-        conn:       session database connection.
+        constraint:   an ExtractionRule.SensorConstraint with column, min, max.
+        conn:         session database connection.
+        col_to_table: canonical column name to the sensor table holding it.
 
     Returns:
         List of TimePeriod covering the ranges where the constraint is met.
 
     Raises:
-        ValueError: if sensor_readings does not exist (no CSV was imported).
-        ValueError: if constraint.column is not a column in sensor_readings.
+        ValueError: if no sensor data was imported at all.
+        ValueError: if constraint.column was not imported from any sensor file.
     """
-    # sensor_readings won't exist if the user didn't supply a data file.
+    # col_to_table is empty when the user supplied no sensor data at all.
     # Give a clear error rather than letting the missing-table crash bubble up.
-    table_exists = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='sensor_readings'"
-    ).fetchone()
-    if not table_exists:
+    if not col_to_table:
         raise ValueError(
             f"Constraint on column {constraint.column!r} requires sensor data, "
             "but no CSV was imported. Provide a --data CSV or remove the constraint."
         )
 
-    # PRAGMA table_info() returns one row per column; index 1 is the column name.
-    # This lets us check at runtime which columns were actually imported from the CSV.
-    available = [
-        row[1]
-        for row in conn.execute("PRAGMA table_info(sensor_readings)").fetchall()
-        if row[1] != "timestamp"
-    ]
-    if constraint.column not in available:
+    table = col_to_table.get(constraint.column)
+    if table is None:
         raise ValueError(
             f"Constraint column {constraint.column!r} not found in sensor data. "
-            f"Available columns: {available}"
+            f"Available columns: {sorted(col_to_table)}"
         )
 
     rows = conn.execute(
-        f'SELECT timestamp, "{constraint.column}" FROM sensor_readings ORDER BY timestamp'
+        f'SELECT timestamp, "{constraint.column}" FROM "{table}" ORDER BY timestamp'
     ).fetchall()
 
     windows = []
@@ -353,20 +372,24 @@ def _sample_timestamps(
     return timestamps
 
 
-def sensor_columns(conn: sqlite3.Connection) -> list[str]:
+def sensor_columns(
+    conn: sqlite3.Connection,
+    table: str = "sensor_readings",
+) -> list[str]:
     """Return sensor column names (excluding timestamp) if the table exists.
 
-    Returns an empty list if sensor_readings does not exist, meaning no CSV
-    was imported and sensor snapshots will be empty for all frames.
+    Returns an empty list if the table does not exist, meaning no CSV was
+    imported for that source and its columns contribute nothing to the
+    snapshot.
     """
     exists = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='sensor_readings'"
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,)
     ).fetchone()
     if not exists:
         return []
     return [
         row[1]
-        for row in conn.execute("PRAGMA table_info(sensor_readings)").fetchall()
+        for row in conn.execute(f'PRAGMA table_info("{table}")').fetchall()
         if row[1] != "timestamp"
     ]
 
@@ -376,6 +399,7 @@ def interpolate_sensor(
     sensor_cols: list[str],
     conn: sqlite3.Connection,
     window: int = 2,
+    table: str = "sensor_readings",
 ) -> dict[str, float]:
     """Interpolate all sensor columns at a Unix epoch timestamp.
 
@@ -394,6 +418,9 @@ def interpolate_sensor(
         sensor_cols: list of sensor column names to interpolate.
         conn:        session database connection.
         window:      number of rows to use on each side.  Default 2.
+        table:       sensor readings table to interpolate from.  One table per
+                     sensor CSV, so each source is interpolated against its own
+                     rows on its own timestamp grid.
 
     Returns:
         Dict mapping each sensor column name to its interpolated value.
@@ -405,13 +432,13 @@ def interpolate_sensor(
     # Fetch up to `window` rows on each side of the target timestamp.
     # Using several rows makes the result more stable if one reading is a spike or error.
     before_rows = conn.execute(
-        f"SELECT timestamp, {col_list} FROM sensor_readings "
+        f'SELECT timestamp, {col_list} FROM "{table}" '
         "WHERE timestamp <= ? ORDER BY timestamp DESC LIMIT ?",
         (ts, window),
     ).fetchall()
 
     after_rows = conn.execute(
-        f"SELECT timestamp, {col_list} FROM sensor_readings "
+        f'SELECT timestamp, {col_list} FROM "{table}" '
         "WHERE timestamp >= ? ORDER BY timestamp ASC LIMIT ?",
         (ts, window),
     ).fetchall()
