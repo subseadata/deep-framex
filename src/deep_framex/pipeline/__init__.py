@@ -8,7 +8,7 @@ Stage order:
     2. Discover and probe video files
     3. Assemble VideoSession (sorted by utc_start)
     4. Initialise session database (in-memory SQLite)
-    5. Import sensor CSV into session database (if provided)
+    5. Import each sensor CSV into its own session database table (if provided)
     6. Validate filename template against known keys (if template supplied)
     7. Plan frame offsets — produces self-contained VideoExtractionPlan objects
     8. Close session database — no longer needed after planning
@@ -51,7 +51,7 @@ from ..extraction.frame_extractor import decode_frames
 from ..extraction.video_session import create_video_session
 from ..metadata.biigle import write_biigle_manifest
 from ..metadata.ifdo import write_ifdo_manifest
-from ..models.core import FrameMetadata, VideoExtractionPlan
+from ..models.core import FrameMetadata, SensorSource, VideoExtractionPlan
 from ..output.output_frames import output_frames, validate_filename_template, write_frame
 from ..planning.planner import plan as plan_extraction
 
@@ -125,7 +125,9 @@ def extract(
         output_dir:   directory to write output image files into.
         spec_path:    path to the YAML extraction spec.
         spec:         extraction spec as a plain dict (same shape as the YAML).
-        csv_path:     path to sensor CSV, or None if no sensor data.
+        csv_path:     path to a single sensor CSV, the shorthand for a one-entry
+                      'sensors' list in the spec.  Ignored when the spec has a
+                      'sensors' block; None if there is no sensor data at all.
 
     Exactly one of spec_path or spec must be provided.
 
@@ -157,19 +159,29 @@ def extract(
     conn = create_session_db()
 
     try:
-        # --- Stage 5: import sensor CSV ---
+        # --- Stage 5: import sensor CSVs ---
         sensor_keys: list[str] = []
         if csv_path is not None and resolved_spec.mappings is None:
             raise ValueError(
                 "A CSV file was provided (--data) but the spec has no 'mappings' block. "
                 "Add mappings (including 'timestamp') or omit --data."
             )
-        if csv_path is not None and resolved_spec.mappings is not None:
+        # A single mappings block plus --data is the one-file shorthand for a
+        # one-entry sensors list.  Normalise it here so the planner has just one
+        # shape to read, and derives its table names from the same list.
+        if not resolved_spec.sensors and csv_path is not None and resolved_spec.mappings:
+            resolved_spec.sensors = [SensorSource(
+                file=csv_path,
+                time_shift=resolved_spec.sensor_time_shift,
+                start_time=resolved_spec.sensor_start_time,
+                **resolved_spec.mappings.model_dump(exclude_none=True),
+            )]
+        for i, source in enumerate(resolved_spec.sensors):
             dataset = import_csv(
-                csv_path, conn, resolved_spec.mappings,
-                resolved_spec.sensor_time_shift, resolved_spec.sensor_start_time,
+                source.file, conn, source, source.time_shift, source.start_time,
+                f"sensor_readings_{i}",
             )
-            sensor_keys = dataset.columns
+            sensor_keys.extend(dataset.columns)
 
         # --- Stage 6: validate filename template ---
         if resolved_spec.filename_template is not None:
