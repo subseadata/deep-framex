@@ -1,6 +1,9 @@
 # Example extraction spec for deep-framex
 #
-# Every rule must have interval_s.
+# Every rule must have exactly one sampling interval:
+#   interval_s — seconds between frames
+#   interval_m — metres of travel between frames (needs latitude/longitude;
+#                see the DISTANCE note under the SENSORS block below)
 # Optional rule arguments: periods, constraints
 #   periods:
 #     - start: start time (ISO 8601 UTC, e.g. "2025-10-15T10:25:00Z")
@@ -43,6 +46,10 @@ rules:
     periods:
       - start: "2025-11-15T10:20:00Z"
         end:   "2025-11-15T10:50:00Z"
+
+  # 1 frame every 25 m travelled, however long that takes the vehicle
+  # (needs a sensor file mapping latitude and longitude — see SENSORS below)
+  # - interval_m: 25.0
 
   # 1 frame every 5s while depth is between 1000–1200 m
   - interval_s: 5.0
@@ -189,6 +196,15 @@ rules:
 # SENSORS (use instead of mappings when you have more than one sensor CSV)
 # ---------------------------------------------------------------------------
 #
+# DISTANCE ALONG TRACK
+#
+# A file that maps BOTH latitude and longitude gains a derived column named
+# distance_along: the cumulative great-circle distance in metres from that
+# file's first fix, 2D horizontal travel only.  It is what interval_m rules
+# sample on, and it is available in filename templates and XMP like any other
+# column.  The name is reserved — you cannot map it from a CSV column, so
+# rename an existing distance column (e.g. nav_distance) if your log has one.
+#
 # Nav fixes and CTD readings are often logged to separate files.  Rather than
 # joining them yourself, give each file its own entry here.  Every entry takes
 # the same mapping keys as the mappings block above, plus the file to read.
@@ -281,6 +297,8 @@ rules:
 #   {offset_s}    — seconds from t=0 in the source video
 #   {<key>}       — any canonical sensor key (left-hand side of mappings block)
 #                   e.g. {depth}, {latitude}, {longitude}, {temperature}
+#   {<key>}       — the derived {distance_along}, metres travelled along track
+#                   (format it: {distance_along:06.0f} gives 001420)
 #   {<key>}       — any key from the metadata block, e.g. {dive_id}, {cruise_id}
 #
 # Use only the variables you want — omit the rest.

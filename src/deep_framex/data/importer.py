@@ -26,6 +26,13 @@ single space before parsing.  All sensor values must be numeric.
 
 If the sensor logger's clock was offset from the video clock, time_shift or
 start_time realign the imported timestamps — see import_csv.
+
+A source that maps both latitude and longitude also gets a derived
+'Distance along track' column: distance_along, the cumulative great-circle
+distance in metres travelled since that file's first fix.  It is computed here,
+after clock correction, and stored like any mapped column, so constraints on
+distance_along, its use in filename templates, and its presence in frame
+metadata all work without special cases.  interval_m rules are planned from it.
 """
 
 import csv
@@ -36,7 +43,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ..db.session_db import init_sensor_table
-from ..models.core import ColumnMappings, ImportedDataset
+from ..models.core import DISTANCE_COLUMN, ColumnMappings, ImportedDataset
+from ..utils.distance import cumulative_distance
 
 
 def import_csv(
@@ -74,10 +82,13 @@ def import_csv(
 
     Returns:
         ImportedDataset with canonical column names, row count, and UTC
-        time range of the imported data.
+        time range of the imported data.  For a source mapping both latitude and
+        longitude, 'distance_along' is included in columns even though the CSV
+        has no such column.
 
     Raises:
         FileNotFoundError: if path does not exist.
+        ValueError: if the mappings use the reserved name 'distance_along'.
         ValueError: if any mapped CSV column is not found in the CSV headers.
         ValueError: if any canonical name fails SQL identifier validation.
         ValueError: if any timestamp string matches neither ISO 8601 nor
@@ -98,6 +109,17 @@ def import_csv(
 
     # Canonical names become DB column names — must be valid SQL identifiers
     _validate_columns(list(canonical_to_csv.keys()))
+
+    if DISTANCE_COLUMN in canonical_to_csv:
+        raise ValueError(
+            f"Canonical name {DISTANCE_COLUMN!r} is reserved — it is derived from latitude and "
+            "longitude, not read from the CSV.  Rename it in your mappings (e.g. 'nav_distance')."
+        )
+
+    # Along-track distance is derivable from any source carrying a position, and
+    # costs nothing to add, so it is always derived when it can be.
+    derive_distance = "latitude" in canonical_to_csv and "longitude" in canonical_to_csv
+    columns = list(canonical_to_csv) + ([DISTANCE_COLUMN] if derive_distance else [])
 
     ts_cols = (
         [mappings.timestamp] if isinstance(mappings.timestamp, str) else mappings.timestamp
@@ -121,7 +143,7 @@ def import_csv(
                     f"not found in CSV. Available columns: {sorted(headers)}"
                 )
 
-        init_sensor_table(conn, list(canonical_to_csv.keys()), table)
+        init_sensor_table(conn, columns, table)
 
         rows: list[tuple] = []
         timestamps: list[float] = []
@@ -160,12 +182,26 @@ def import_csv(
         rows = [(ts + delta, *vals) for ts, *vals in rows]
         timestamps = [ts + delta for ts in timestamps]
 
-    placeholders = ", ".join(["?"] * (1 + len(canonical_to_csv)))
+    if derive_distance:
+        # Accumulate in corrected time order, not CSV row order: the file need not
+        # be sorted, and distance along a track is defined by when each fix was
+        # taken.  Each cumulative value is written back at its own row's index, so
+        # the distance travels with the fix it belongs to.
+        lat_i = 1 + columns.index("latitude")   # rows lead with the timestamp
+        lon_i = 1 + columns.index("longitude")
+        order = sorted(range(len(rows)), key=lambda i: timestamps[i])
+        cumulative = cumulative_distance((rows[i][lat_i], rows[i][lon_i]) for i in order)
+        distances = [0.0] * len(rows)
+        for slot, row_index in enumerate(order):
+            distances[row_index] = cumulative[slot]
+        rows = [(*row, dist) for row, dist in zip(rows, distances)]
+
+    placeholders = ", ".join(["?"] * (1 + len(columns)))
     conn.executemany(f'INSERT INTO "{table}" VALUES ({placeholders})', rows)
     conn.commit()
 
     return ImportedDataset(
-        columns=list(canonical_to_csv.keys()),
+        columns=columns,
         timestamp_column=mappings.timestamp,
         row_count=len(rows),
         utc_start=datetime.fromtimestamp(min(timestamps), tz=timezone.utc),
