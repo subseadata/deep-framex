@@ -5,16 +5,20 @@ Parses a YAML config file or dict into an ExtractionSpec.
 Expected YAML shape:
 
     rules:
-      - interval_s: 10.0
+      - interval_s: 10.0        # one frame every 10 seconds of video time
         periods:
           - start: "2024-01-15T10:00:00Z"
             end:   "2024-01-15T10:30:00Z"
+      - interval_m: 25.0        # or one frame every 25 metres travelled; never both
         constraints:
           - column: depth
             min: 1000
             max: 1200
       - interval_s: 1.0
         # no periods key → rule applies to full session
+
+    # interval_m needs a sensor file mapping both latitude and longitude; the tool
+    # derives along-track distance from it.  See 'Distance-based extraction' in the README.
 
     mappings:                  # omit entirely if no CSV was imported
       timestamp: utc_time      # required if mappings is present
@@ -48,6 +52,7 @@ from pathlib import Path
 import yaml
 
 from ..models.core import (
+    DISTANCE_COLUMN,
     ColumnMappings,
     ExtractionRule,
     ExtractionSpec,
@@ -150,9 +155,9 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
         Fully constructed ExtractionSpec.
 
     Raises:
-        ValueError: if 'rules' key is missing or empty, if any rule is
-                    missing 'interval_s', or if any datetime string is not
-                    a valid ISO 8601 UTC timestamp.
+        ValueError: if 'rules' key is missing or empty, if any rule sets both
+                    'interval_s' and 'interval_m' or neither, or if any datetime
+                    string is not a valid ISO 8601 UTC timestamp.
         ValueError: if any constraint is missing 'column' or has a
                     non-numeric min/max value.
         ValueError: if 'mappings' is present but 'timestamp' is missing.
@@ -175,18 +180,35 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
             raise ValueError(
                 f"Rule {i}: each rule must be a YAML mapping (got {type(raw_rule).__name__} {raw_rule!r}). "
                 "Check that your rules block uses the correct indentation — each rule should start "
-                "with '- interval_s: ...' with no extra quoting."
+                "with '- interval_s: ...' or '- interval_m: ...' with no extra quoting."
             )
-        if 'interval_s' not in raw_rule:
-            raise ValueError(f"Rule {i}: missing 'interval_s'")
-        try:
-            interval_s = float(raw_rule['interval_s'])
-        except (TypeError, ValueError):
+        # A rule samples one grid: the video clock or the nav track, never both.
+        # Two rules in the same spec express the combination, and are unioned.
+        if 'interval_s' in raw_rule and 'interval_m' in raw_rule:
             raise ValueError(
-                f"Rule {i}: 'interval_s' must be a positive number, got {raw_rule['interval_s']!r}"
+                f"Rule {i}: 'interval_s' and 'interval_m' are mutually exclusive — one rule "
+                "samples either time or distance along track. Write two rules instead; their "
+                "frames are unioned."
             )
-        if interval_s <= 0:
-            raise ValueError(f"Rule {i}: 'interval_s' must be positive, got {interval_s}")
+        if 'interval_s' not in raw_rule and 'interval_m' not in raw_rule:
+            raise ValueError(
+                f"Rule {i}: missing 'interval_s' (one frame every N seconds) or "
+                "'interval_m' (one frame every N metres travelled)"
+            )
+
+        intervals: dict[str, float] = {}
+        for key in ('interval_s', 'interval_m'):
+            if key not in raw_rule:
+                continue
+            try:
+                value = float(raw_rule[key])
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"Rule {i}: {key!r} must be a positive number, got {raw_rule[key]!r}"
+                )
+            if value <= 0:
+                raise ValueError(f"Rule {i}: {key!r} must be positive, got {value}")
+            intervals[key] = value
 
         periods = []
         for j, raw_period in enumerate(raw_rule.get('periods', [])):
@@ -231,7 +253,9 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
             )
 
         rules.append(
-            ExtractionRule(interval_s=interval_s, periods=periods, constraints=constraints)
+            ExtractionRule(
+                periods=periods, constraints=constraints, **intervals
+            )
         )
 
     # mappings (optional)
@@ -285,6 +309,12 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
         # Canonical names become columns in one shared snapshot, so two files
         # claiming the same name would silently overwrite each other's values.
         for name in sensors[-1].model_fields_set - _SENSOR_RESERVED:
+            if name == DISTANCE_COLUMN:
+                raise ValueError(
+                    f"Sensor {i} ({entry['file']}): {DISTANCE_COLUMN!r} is a reserved name — "
+                    "it is derived from latitude and longitude, not read from the CSV.  "
+                    "Rename it (e.g. 'nav_distance')."
+                )
             if name in seen:
                 raise ValueError(
                     f"Sensor {i} ({entry['file']}) maps {name!r}, which "
@@ -292,6 +322,27 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
                     "name — rename one side (e.g. 'ctd_depth' and 'nav_depth')."
                 )
             seen[name] = str(entry['file'])
+
+    # interval_m rules can only be planned from derived along-track distance, which
+    # exists for a source mapping both coordinates.  Fail here rather than after
+    # video probing and CSV import.  Without a sensors block, look at the
+    # mappings + --data shorthand instead — it is not normalised into a
+    # SensorSource until the pipeline runs, which ignores it when sensors exist.
+    distance_rules = [i for i, rule in enumerate(rules) if rule.interval_m is not None]
+    if distance_rules:
+        positioned = [
+            str(entry.get('file'))
+            for entry in (raw.get('sensors') or [])
+            if entry.get('latitude') and entry.get('longitude')
+        ]
+        if not sensors and mappings is not None and mappings.latitude and mappings.longitude:
+            positioned.append("'mappings' block")
+        if not positioned:
+            raise ValueError(
+                f"Rule {distance_rules[0]} uses 'interval_m', which needs a sensor file mapping "
+                "both 'latitude' and 'longitude' so distance along track can be derived. "
+                "Add them to your mappings, or use 'interval_s'."
+            )
 
     # project_metadata (optional) — all values coerced to str
     project_metadata = {str(k): str(v) for k, v in raw.get('metadata', {}).items()}

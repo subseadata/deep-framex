@@ -9,6 +9,12 @@ timestamp.  Each sensor CSV lives in its own table and is interpolated
 independently, then the per-source results are merged into one flat snapshot.  Downstream stages read from frame_plan; the extractor uses the
 returned VideoExtractionPlan list.
 
+Sampling is by time (interval_s) or by distance along track (interval_m), but both
+kinds end the same way: a set of UTC timestamps.  A distance rule turns every N
+metres of travel into the instant the vehicle passed that far along, by inverting
+the derived distance_along column between fixes, and joins the same timestamp set.
+Everything downstream is shared, so a spec may mix the two kinds freely.
+
 Rule composition:
     Same rule  — periods and constraints are intersected.  Only timestamps
                  where all conditions are simultaneously met are included.
@@ -20,12 +26,14 @@ import json
 import math
 import sqlite3
 import warnings
+from bisect import bisect_left
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from statistics import median
 
 from ..db.session_db import init_frame_plan_table
 from ..models.core import (
+    DISTANCE_COLUMN,
     ExtractionRule,
     ExtractionSpec,
     FrameSpec,
@@ -44,7 +52,8 @@ def plan(
     """Translate an ExtractionSpec into per-video extraction offsets.
 
     For each rule, resolves the effective time windows by intersecting
-    periods and sensor constraint windows, then samples at interval_s.
+    periods and sensor constraint windows, then samples the grid — at
+    interval_s, or at interval_m using derived along-track distance.
     Unions all timestamps across rules, deduplicates, writes to frame_plan,
     and maps timestamps to per-video offsets.
 
@@ -66,6 +75,8 @@ def plan(
                     the session.
         ValueError: if a constraint references a column that was not imported
                     from any sensor file.
+        ValueError: if a rule uses interval_m but no imported sensor file
+                    carried both a latitude and a longitude.
     """
     init_frame_plan_table(conn)
 
@@ -95,11 +106,28 @@ def plan(
     # A timestamp claimed by two overlapping rules is deduplicated here — the
     # extractor will see it once and write one frame.
     all_timestamps: set[datetime] = set()
-    for rule in spec.rules:
+    for i, rule in enumerate(spec.rules):
         windows = _rule_windows(rule, session, conn, col_to_table)
-        all_timestamps.update(
-            _sample_timestamps(windows, rule.interval_s, session_start, spec.initial_offset_s)
-        )
+        if rule.interval_m is not None:
+            timestamps = _sample_timestamps_by_distance(
+                windows, rule.interval_m, session_start, conn, col_to_table
+            )
+            # Unlike a time rule, an empty distance plan is usually a data problem —
+            # a nav log that does not overlap the video, or a vehicle that barely
+            # moved — and it shows up as missing frames rather than an error.
+            if not timestamps:
+                warnings.warn(
+                    f"Rule {i} extracts one frame every {rule.interval_m} m but planned no "
+                    "frames. The vehicle travelled less than one interval inside the selected "
+                    "windows, or the nav data does not overlap the video. Check with --plan.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+        else:
+            timestamps = _sample_timestamps(
+                windows, rule.interval_s, session_start, spec.initial_offset_s
+            )
+        all_timestamps.update(timestamps)
 
     # video_frames accumulates FrameSpec objects per video, keeping offset and
     # sensor snapshot together so they can never get out of sync.
@@ -368,6 +396,106 @@ def _sample_timestamps(
             if t > window.end:
                 break
             timestamps.append(t)
+            n += 1
+    return timestamps
+
+
+def _sample_timestamps_by_distance(
+    windows: list[TimePeriod],
+    interval_m: float,
+    session_start: datetime,
+    conn: sqlite3.Connection,
+    col_to_table: dict[str, str],
+) -> list[datetime]:
+    """Sample UTC timestamps every interval_m metres of travel across time windows.
+
+    Distance along track grows monotonically with time, so a distance and a time
+    are interchangeable: for each grid point the vehicle passes, the instant of the
+    crossing is interpolated linearly between the two fixes that bracket it.
+
+    The grid is anchored at the distance value at session_start and is the same for
+    every window, mirroring _sample_timestamps() — periods and sensor constraints
+    filter this grid, they do not start a new one.  Each point is computed as
+    anchor + n * interval_m rather than accumulated, which stops floating drift.
+
+    Args:
+        windows:       list of TimePeriod to sample within.
+        interval_m:    metres of travel between frames.
+        session_start: UTC start of the first video; anchors the grid.
+        conn:          session database connection.
+        col_to_table:  canonical column name to the sensor table holding it.
+
+    Returns:
+        List of datetime timestamps (unsorted — caller deduplicates via set).
+
+    Raises:
+        ValueError: if no imported source carried both a latitude and a longitude,
+                    so no along-track distance exists to sample.
+    """
+    table = col_to_table.get(DISTANCE_COLUMN)
+    if table is None:
+        raise ValueError(
+            "Rules with 'interval_m' need distance along track, which is derived from a "
+            "sensor file mapping both 'latitude' and 'longitude'.  No such column was "
+            f"imported. Available columns: {sorted(col_to_table)}"
+        )
+
+    # Two columns of the nav table, read once: fixes are ordered by time and their
+    # distances are non-decreasing, so both are searchable.
+    fixes = conn.execute(
+        f'SELECT timestamp, "{DISTANCE_COLUMN}" FROM "{table}" ORDER BY timestamp'
+    ).fetchall()
+    times = [row[0] for row in fixes]
+    distances = [row[1] for row in fixes]
+
+    def distance_at(utc: float) -> float:
+        """Distance travelled at a time, clamped to the ends of the nav log."""
+        if utc <= times[0]:
+            return distances[0]
+        if utc >= times[-1]:
+            return distances[-1]
+        i = bisect_left(times, utc)
+        t0, d0 = fixes[i - 1]
+        t1, d1 = fixes[i]
+        return d0 + (utc - t0) / (t1 - t0) * (d1 - d0)
+
+    def time_at(distance: float) -> float | None:
+        """Time the vehicle first reached a distance, or None if it never did.
+
+        bisect_left lands on the first fix at or beyond the target, so a distance
+        reached while stationary resolves to the first instant at that distance.
+        """
+        i = bisect_left(distances, distance)
+        if i == 0:
+            return times[0]
+        if i >= len(fixes):
+            return None
+        t0, d0 = fixes[i - 1]
+        t1, d1 = fixes[i]
+        return t0 + (distance - d0) / (d1 - d0) * (t1 - t0)
+
+    anchor = distance_at(session_start.timestamp())
+
+    timestamps = []
+    for window in windows:
+        d_start = distance_at(window.start.timestamp())
+        d_end = distance_at(window.end.timestamp())
+
+        # First grid step at or after the start of this window.
+        n = max(0, math.ceil((d_start - anchor) / interval_m))
+        while True:
+            distance = anchor + n * interval_m
+            if distance > d_end:
+                break
+            crossing = time_at(distance)
+            if crossing is None:  # the track ran out before this grid point
+                break
+            # time_at() gives the first instant a distance was reached, which precedes
+            # the window when it opens during a hold or before the nav log starts.
+            crossing = max(crossing, window.start.timestamp())
+            if crossing > window.end.timestamp():
+                break
+            timestamps.append(datetime.fromtimestamp(crossing, tz=timezone.utc))
             n += 1
     return timestamps
 
