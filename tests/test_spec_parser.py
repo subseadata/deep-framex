@@ -357,3 +357,132 @@ def test_sensor_entry_window_below_one_warns_and_clamps():
                          "interpolation_window": 0}],
         })
     assert spec.sensors[0].interpolation_window == 1
+
+
+# --- distance-based rules ---------------------------------------------------
+
+# interval_m is a valid alternative to interval_s, and can be mixed with it in
+# one spec file.
+def test_interval_m_parses():
+    spec = spec_from_dict({
+        "rules": [{"interval_m": 25.0}],
+        "sensors": [{"file": "nav.csv", "timestamp": "utc_time",
+                     "latitude": "Lat", "longitude": "Lon"}],
+    })
+    assert spec.rules[0].interval_m == 25.0
+    assert spec.rules[0].interval_s is None
+
+
+def test_time_and_distance_rules_mix_in_one_spec():
+    spec = spec_from_dict({
+        "rules": [
+            {"interval_s": 30.0},
+            {
+                "interval_m": 10.0,
+                "periods": [{"start": "2025-10-15T10:00:00Z", "end": "2025-10-15T10:10:00Z"}],
+                "constraints": [{"column": "depth", "min": 1000, "max": 1200}],
+            },
+        ],
+        "sensors": [
+            {"file": "nav.csv", "timestamp": "utc_time",
+             "latitude": "Lat", "longitude": "Lon"},
+        ],
+    })
+    assert spec.rules[0].interval_s == 30.0
+    assert spec.rules[1].interval_m == 10.0
+    assert len(spec.rules[1].periods) == 1
+    assert len(spec.rules[1].constraints) == 1
+
+
+# One rule samples one grid: setting both intervals is rejected.
+def test_interval_s_and_interval_m_are_mutually_exclusive():
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        spec_from_dict({"rules": [{"interval_s": 30.0, "interval_m": 10.0}]})
+
+
+# A rule must say how often to sample, in time or in distance.
+def test_rule_needs_an_interval():
+    with pytest.raises(ValueError, match="missing 'interval_s'"):
+        spec_from_dict({"rules": [{"periods": []}]})
+
+
+@pytest.mark.parametrize("key", ["interval_s", "interval_m"])
+def test_interval_must_be_a_positive_number(key):
+    with pytest.raises(ValueError, match="positive"):
+        spec_from_dict({"rules": [{key: -5.0}]})
+    with pytest.raises(ValueError, match="positive"):
+        spec_from_dict({"rules": [{key: 0}]})
+    with pytest.raises(ValueError, match="positive number"):
+        spec_from_dict({"rules": [{key: "soon"}]})
+
+
+# interval_m needs derived along-track distance, which needs both coordinates.
+# Failing at parse time beats failing after videos are probed and CSVs read.
+def test_interval_m_without_any_sensor_data_raises():
+    with pytest.raises(ValueError, match="latitude"):
+        spec_from_dict({"rules": [{"interval_m": 10.0}]})
+
+
+def test_interval_m_with_a_source_lacking_a_longitude_raises():
+    with pytest.raises(ValueError, match="interval_m"):
+        spec_from_dict({
+            "rules": [{"interval_m": 10.0}],
+            "sensors": [{"file": "nav.csv", "timestamp": "utc_time", "latitude": "Lat"}],
+        })
+
+
+# Both coordinates present is enough — no depth, no other columns needed.
+def test_interval_m_with_a_positioned_source_parses():
+    spec = spec_from_dict({
+        "rules": [{"interval_m": 10.0}],
+        "sensors": [{"file": "nav.csv", "timestamp": "utc_time",
+                     "latitude": "Lat", "longitude": "Lon"}],
+    })
+    assert spec.rules[0].interval_m == 10.0
+
+
+# The mappings + --data shorthand is not a sensors entry yet at parse time, so
+# the guard has to look there too.
+def test_interval_m_accepts_the_mappings_shorthand():
+    spec = spec_from_dict({
+        "rules": [{"interval_m": 10.0}],
+        "mappings": {"timestamp": "utc_time", "latitude": "Lat", "longitude": "Lon"},
+    })
+    assert spec.rules[0].interval_m == 10.0
+
+
+def test_interval_m_with_mappings_lacking_a_longitude_raises():
+    with pytest.raises(ValueError, match="interval_m"):
+        spec_from_dict({
+            "rules": [{"interval_m": 10.0}],
+            "mappings": {"timestamp": "utc_time", "latitude": "Lat"},
+        })
+
+
+# A time rule alone never needs coordinates.
+def test_interval_s_needs_no_sensor_data():
+    assert spec_from_dict({"rules": [{"interval_s": 10.0}]}).rules[0].interval_s == 10.0
+
+
+# distance_along is derived, so it may not be claimed as a CSV column name.
+def test_distance_along_is_reserved_in_sensors():
+    with pytest.raises(ValueError, match="Sensor 1"):
+        spec_from_dict({
+            "rules": [{"interval_s": 10.0}],
+            "sensors": [
+                {"file": "ctd.csv", "timestamp": "t", "depth": "Depth_m"},
+                {"file": "nav.csv", "timestamp": "t", "distance_along": "Dist_m"},
+            ],
+        })
+
+
+# The model itself refuses an interval-less rule, however it is built.
+def test_extraction_rule_model_requires_exactly_one_interval():
+    from deep_framex.models.core import ExtractionRule
+
+    ExtractionRule(interval_s=10.0)
+    ExtractionRule(interval_m=10.0)
+    with pytest.raises(ValueError, match="exactly one"):
+        ExtractionRule()
+    with pytest.raises(ValueError, match="exactly one"):
+        ExtractionRule(interval_s=10.0, interval_m=10.0)

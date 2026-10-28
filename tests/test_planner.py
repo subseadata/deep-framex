@@ -1,6 +1,11 @@
-from deep_framex.planning.planner import _intersect_windows, _sample_timestamps
+from deep_framex.planning.planner import (
+    _intersect_windows,
+    _sample_timestamps,
+    _sample_timestamps_by_distance,
+)
 from deep_framex.models.core import TimePeriod
 from datetime import datetime, timezone
+import math
 
 def test_intersect_windows():
     # Test intersecting time periods
@@ -72,7 +77,7 @@ from pathlib import Path
 from deep_framex.config.spec_parser import spec_from_dict
 from deep_framex.data.importer import import_csv
 from deep_framex.db.session_db import create_session_db
-from deep_framex.models.core import SensorSource, VideoFile, VideoSession
+from deep_framex.models.core import ExtractionSpec, SensorSource, VideoFile, VideoSession
 from deep_framex.planning.planner import interpolate_sensor, plan, sensor_columns
 
 
@@ -285,3 +290,226 @@ def test_interpolate_sensor_targets_given_table(conn, two_source_raw):
     assert set(interpolate_sensor(ts, ["latitude"], conn, 2, "sensor_readings_1")) == {"latitude"}
     with pytest.raises(sqlite3.OperationalError):
         interpolate_sensor(ts, ["depth"], conn, 2, "sensor_readings_9")
+
+
+# --- distance-based planning -----------------------------------------------
+
+from deep_framex.models.core import ExtractionRule
+from deep_framex.utils.distance import EARTH_RADIUS_M
+
+# One degree of latitude on the module's sphere, and the 1e-4 deg/s track speed
+# the nav fixtures below write — so the vehicle travels NAV_SPEED_M per second.
+DEGREE_M = math.radians(1.0) * EARTH_RADIUS_M
+NAV_SPEED_M = DEGREE_M * 1e-4
+
+
+def _write_nav(tmp_path, start, seconds, depth_start=None, fixed=False):
+    """Nav log moving north 1e-4 degrees of latitude per second from `start`.
+
+    Positions are exact straight lines due north, so cumulative distance is
+    seconds * NAV_SPEED_M with no rounding to allow for.
+    """
+    header = "utc_time,Lat,Lon" + (",Depth_m" if depth_start is not None else "")
+    lines = [header]
+    for i in range(seconds + 1):
+        t = start + timedelta(seconds=i)
+        lat = 27.0 if fixed else 27.0 + i * 1e-4
+        row = f"{t:%Y-%m-%dT%H:%M:%SZ},{lat:.7f},-165.0"
+        if depth_start is not None:
+            row += f",{depth_start + i}"
+        lines.append(row)
+    path = tmp_path / "nav.csv"
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+def _nav_spec(nav, rule):
+    return {
+        "rules": [rule],
+        "sensors": [{"file": str(nav), "timestamp": "utc_time",
+                     "latitude": "Lat", "longitude": "Lon"}],
+    }
+
+
+def _utcs(session, plans):
+    start = session.videos[0].utc_start
+    return [start + timedelta(seconds=f.offset_s) for p in plans for f in p.frames]
+
+
+# Frames land every interval_m metres of travel, whatever that does to the clock.
+def test_distance_rule_spaces_frames_by_travel(conn, session, tmp_path):
+    nav = _write_nav(tmp_path, datetime(2025, 10, 15, 10, 0, 0, tzinfo=timezone.utc), 120)
+    spec = _load(conn, _nav_spec(nav, {"interval_m": 100.0}))
+    frames = plan(spec, session, conn)[0].frames
+
+    # 60 s of video at NAV_SPEED_M covers ~667 m: the 0 m frame plus every 100 m
+    # up to 600 m.
+    assert len(frames) == 7
+    offsets = [f.offset_s for f in frames]
+    assert offsets == sorted(offsets)
+    assert offsets[0] == pytest.approx(0.0)
+    # Each frame's own interpolated distance sits on the 100 m grid.
+    assert [f.sensor_snapshot["distance_along"] for f in frames] == pytest.approx(
+        [n * 100.0 for n in range(7)], abs=0.01
+    )
+
+
+# A distance rule's periods filter the track exactly as they filter a time grid.
+def test_distance_rule_respects_periods(conn, session, tmp_path):
+    nav = _write_nav(tmp_path, datetime(2025, 10, 15, 10, 0, 0, tzinfo=timezone.utc), 120)
+    spec = _nav_spec(nav, {
+        "interval_m": 100.0,
+        "periods": [
+            {"start": "2025-10-15T10:00:30Z", "end": "2025-10-15T10:01:00Z"},
+        ],
+    })
+    spec = _load(conn, spec)
+    utcs = _utcs(session, plan(spec, session, conn))
+
+    assert utcs
+    assert all(datetime(2025, 10, 15, 10, 0, 30, tzinfo=timezone.utc) <= t
+               <= datetime(2025, 10, 15, 10, 1, 0, tzinfo=timezone.utc) for t in utcs)
+    # The grid is anchored at session start, so the first frame in the window is
+    # the 400 m crossing (~45 s), not one interval after the window opens.
+    assert utcs[0] == pytest.approx(
+        (datetime(2025, 10, 15, 10, 0, 0, tzinfo=timezone.utc)
+         + timedelta(seconds=400 / NAV_SPEED_M)), abs=timedelta(seconds=0.05)
+    )
+
+
+# A sensor constraint narrows a distance rule the same way it narrows a time rule.
+def test_distance_rule_respects_constraints(conn, session, tmp_path):
+    nav = _write_nav(tmp_path, datetime(2025, 10, 15, 10, 0, 0, tzinfo=timezone.utc),
+                     120, depth_start=0)
+    spec = {
+        "rules": [{"interval_m": 100.0, "constraints": [{"column": "depth", "min": 40}]}],
+        "sensors": [{"file": str(nav), "timestamp": "utc_time", "latitude": "Lat",
+                     "longitude": "Lon", "depth": "Depth_m"}],
+    }
+    spec = _load(conn, spec)
+    frames = plan(spec, session, conn)[0].frames
+
+    # Depth reaches 40 m at t=40 s, so only the 500 m and 600 m crossings survive.
+    assert [round(f.offset_s, 2) for f in frames] == pytest.approx(
+        [500 / NAV_SPEED_M, 600 / NAV_SPEED_M], abs=0.01
+    )
+
+
+# Time and distance rules coexist in one spec, and a timestamp claimed by both is
+# written once.
+def test_distance_and_time_rules_union(conn, session, tmp_path):
+    nav = _write_nav(tmp_path, datetime(2025, 10, 15, 10, 0, 0, tzinfo=timezone.utc), 120)
+    raw = _nav_spec(nav, {"interval_m": 100.0})
+    raw["rules"] = [{"interval_s": 30.0}, {"interval_m": 100.0}]
+
+    spec = _load(conn, raw)
+    offsets = [f.offset_s for f in plan(spec, session, conn)[0].frames]
+
+    # 7 distance frames + 3 time frames (0, 30, 60 s) share the t=0 frame once.
+    assert len(offsets) == 9
+    assert len(offsets) == len(set(offsets))
+    assert offsets == sorted(offsets)
+
+
+# The grid anchors at the distance travelled by session start, not at the nav
+# file's own zero, so a log that predates the video still starts its frames at the
+# start of the video.
+def test_distance_grid_anchors_at_session_start(conn, session, tmp_path):
+    nav = _write_nav(tmp_path, datetime(2025, 10, 15, 9, 50, 0, tzinfo=timezone.utc), 720)
+    spec = _load(conn, _nav_spec(nav, {"interval_m": 100.0}))
+    frames = plan(spec, session, conn)[0].frames
+
+    assert frames[0].offset_s == pytest.approx(0.0)
+    started_at = 600 * NAV_SPEED_M  # 10 minutes of travel before the video began
+    assert frames[0].sensor_snapshot["distance_along"] == pytest.approx(started_at, abs=0.5)
+    assert frames[1].sensor_snapshot["distance_along"] == pytest.approx(
+        started_at + 100.0, abs=0.5
+    )
+
+
+# A vehicle that never moves travels no distance, so the only frame a distance
+# rule can place is the session-start one — the grid's zero point.
+def test_stationary_vehicle_plans_only_the_start_frame(conn, session, tmp_path):
+    nav = _write_nav(tmp_path, datetime(2025, 10, 15, 10, 0, 0, tzinfo=timezone.utc),
+                     120, fixed=True)
+    spec = _load(conn, _nav_spec(nav, {"interval_m": 100.0}))
+    frames = plan(spec, session, conn)[0].frames
+    assert [f.offset_s for f in frames] == [0.0]
+
+
+# A window shorter than one interval of travel contains no grid point at all.
+# That is normally a mistake in the spec or the nav data, so it warns.
+def test_distance_rule_warns_when_no_grid_point_falls_in_a_window(conn, session, tmp_path):
+    nav = _write_nav(tmp_path, datetime(2025, 10, 15, 10, 0, 0, tzinfo=timezone.utc), 120)
+    spec = _nav_spec(nav, {
+        "interval_m": 100.0,
+        "periods": [
+            # 40-41 s covers ~11 m of travel, well short of the next 100 m mark.
+            {"start": "2025-10-15T10:00:40Z", "end": "2025-10-15T10:00:41Z"},
+        ],
+    })
+    spec = _load(conn, spec)
+    with pytest.warns(UserWarning, match="planned no frames"):
+        plans = plan(spec, session, conn)
+    assert plans == []
+
+
+# The parser blocks interval_m without coordinates; this is the backstop for a
+# spec built directly in Python.
+def test_distance_rule_without_positions_raises(conn, session):
+    spec = ExtractionSpec(rules=[ExtractionRule(interval_m=10.0)])
+    with pytest.raises(ValueError, match="distance along track"):
+        plan(spec, session, conn)
+
+
+# The planner returns timestamps, and the sampler is testable on its own: a
+# stationary stretch resolves to the first instant the vehicle reached a distance.
+def test_sample_timestamps_by_distance_skips_stationary_stretches(conn, tmp_path):
+    path = tmp_path / "hold.csv"
+    path.write_text(
+        "utc_time,Lat,Lon\n"
+        "2025-10-15T10:00:00Z,27.0000000,-165.0\n"
+        "2025-10-15T10:00:10Z,27.0000000,-165.0\n"      # held position for 10 s
+        "2025-10-15T10:00:20Z,27.0010000,-165.0\n"
+    )
+    spec = spec_from_dict(_nav_spec(path, {"interval_m": 100.0}))
+    import_csv(path, conn, spec.sensors[0], None, None, "sensor_readings_0")
+
+    start = datetime(2025, 10, 15, 10, 0, 0, tzinfo=timezone.utc)
+    stamps = _sample_timestamps_by_distance(
+        [TimePeriod(start=start, end=start + timedelta(seconds=20))],
+        100.0, start, conn, {"distance_along": "sensor_readings_0"},
+    )
+
+    # 0 m at the start, then the 100 m mark of the 111 m second leg — reached part
+    # way through it, not at the fix that finally reports it.
+    assert stamps[0] == start
+    assert start + timedelta(seconds=10) < stamps[1] < start + timedelta(seconds=20)
+    assert len(stamps) == 2
+
+
+# A grid point reached before a window opens lands at the window start, and one
+# first reached after the window closes is not planned for that window.
+def test_sample_timestamps_by_distance_stays_inside_windows(conn, tmp_path):
+    path = tmp_path / "late.csv"
+    path.write_text(
+        "utc_time,Lat,Lon\n"
+        "2025-10-15T10:00:30Z,27.0000000,-165.0\n"      # log starts 30 s in
+        "2025-10-15T10:00:40Z,27.0000000,-165.0\n"      # held position for 10 s
+        "2025-10-15T10:00:50Z,27.0010000,-165.0\n"
+    )
+    spec = spec_from_dict(_nav_spec(path, {"interval_m": 100.0}))
+    import_csv(path, conn, spec.sensors[0], None, None, "sensor_readings_0")
+
+    start = datetime(2025, 10, 15, 10, 0, 0, tzinfo=timezone.utc)
+    stamps = _sample_timestamps_by_distance(
+        [
+            TimePeriod(start=start + timedelta(seconds=5), end=start + timedelta(seconds=20)),
+            TimePeriod(start=start + timedelta(seconds=35), end=start + timedelta(seconds=38)),
+        ],
+        100.0, start, conn, {"distance_along": "sensor_readings_0"},
+    )
+
+    # The first window ends before the log starts; the second opens during the
+    # hold, on the 0 m grid point.
+    assert stamps == [start + timedelta(seconds=35)]
