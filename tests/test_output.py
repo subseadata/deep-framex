@@ -61,3 +61,23 @@ def test_validate_filename_template_index():
 # _render_filename, index is zero-based and index1 one-based.
 def test_render_filename_index(frame):
     assert _render_filename(frame, "{video_stem}_{index:05d}_{index1:05d}.jpg", 7) == "video_00007_00008.jpg"
+
+# validate_filename_template, the derived distance_along key is an ordinary
+# sensor key once imported, so it is available to templates.
+def test_validate_filename_template_distance_along():
+    validate_filename_template("{utc}_{distance_along:06.0f}.jpg", ["distance_along"], [])
+
+# _render_filename, distance_along renders at whatever precision the template asks
+# for — the raw interpolated float is the user's to format.
+def test_render_filename_distance_along():
+    meta = FrameMetadata(
+        utc_timestamp=datetime(2025, 10, 15, 10, 25, 18, tzinfo=timezone.utc),
+        video_path=Path("/data/dive01.mov"),
+        offset_s=30.0,
+        sensor_snapshot={"distance_along": 842.456},
+    )
+    frame = ExtractedFrame(frame=np.zeros((8, 8, 3), dtype=np.uint8), metadata=meta)
+    assert _render_filename(frame, "{video_stem}_{distance_along:06.0f}m.jpg") == \
+        "dive01_000842m.jpg"
+    assert _render_filename(frame, "{video_stem}_{distance_along:.1f}m.jpg") == \
+        "dive01_842.5m.jpg"
