@@ -15,6 +15,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from ..models.core import Video, VideoFile
+from ..config.timestamp_discovery import parse_filename
 
 
 def open_video(video_file: VideoFile) -> Video:
@@ -35,7 +36,7 @@ def open_video(video_file: VideoFile) -> Video:
     return Video(file=video_file, container=container)
 
 
-def probe_video(path: Path, utc_start: datetime | None = None) -> VideoFile:
+def probe_video(path: Path, utc_start: datetime | None = None, filename_parser: dict | None = None) -> VideoFile:
     """Probe a video file and return a fully populated VideoFile.
 
     Reads container metadata via PyAV without opening a full decode context.
@@ -49,6 +50,7 @@ def probe_video(path: Path, utc_start: datetime | None = None) -> VideoFile:
         utc_start: UTC start time override.  When given, the creation_time tag
                    is not read at all (used for unclocked video, see the spec's
                    video_start_times block).
+        filename_parser: Configuration for parsing the filename to extract a timestamp.
 
     Returns:
         VideoFile with path, utc_start, and duration populated.
@@ -61,6 +63,12 @@ def probe_video(path: Path, utc_start: datetime | None = None) -> VideoFile:
     """
     if not path.exists():
         raise FileNotFoundError(f"Video file not found: {path}")
+
+    if filename_parser:
+        parsed_result = parse_filename(path.name, **filename_parser)
+        if parsed_result.error:
+            raise ValueError(f"Error parsing timestamp from filename {path.name}: {parsed_result.error}")
+        utc_start = parsed_result.parsed
 
     with av.open(str(path), metadata_errors="ignore") as container:
         if utc_start is None:

@@ -54,6 +54,7 @@ from ..models.core import (
     SensorSource,
     TimePeriod,
 )
+from ..config.timestamp_discovery import validate_video_times_from_filename
 
 # SensorSource fields that configure the file rather than name a sensor column.
 # Everything else a user lists in a sensors entry is a canonical column name.
@@ -361,6 +362,14 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
             )
         video_start_times[name] = start
 
+    # video_times_from_filename (optional) — filename -> parse UTC timestamp from filename
+    video_times_from_filename = raw.get('video_times_from_filename', None)
+    if video_times_from_filename:
+        validate_video_times_from_filename(video_times_from_filename)
+        if "offset" in video_times_from_filename:
+            video_times_from_filename["offset"] = _parse_hms(video_times_from_filename["offset"])
+
+
     # sensor_time_shift / sensor_start_time (optional) — align sensor time to video time.
     # Mutually exclusive: they express conflicting intents, and silently preferring one
     # would misalign the sensor data without telling the user.
@@ -405,5 +414,6 @@ def spec_from_dict(raw: dict) -> ExtractionSpec:
         video_start_times=video_start_times,
         sensor_time_shift=sensor_time_shift,
         sensor_start_time=sensor_start_time,
+        video_times_from_filename=video_times_from_filename,
         **kwargs,
     )
