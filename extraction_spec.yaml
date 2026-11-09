@@ -75,6 +75,39 @@ rules:
 # video_start_times:
 #   "dive_001.mp4": "2025-11-15T10:00:00Z"
 #   "dive_002.mp4": "2025-11-15T10:10:00Z"
+#
+# A second option is to extract the start time from the filename itself using video_times_from_filename.
+# The tool provides 3 ways to extract timestamps. They are mutually exclusive, only one can be set in the spec file.
+#   'split' - split the filename by a separator and select which part contains the timestamp
+#   'range' - set the start and end characters of the timestamp in the filename
+#   'regex' - use the first match from a regex (advanced)
+#
+# mode can be 'split', 'range' or 'regex' and format is the strptime format string to parse the timestamp.
+# offset can be used to add/subtract a duration to the parsed timestamp. It is a signed HH:MM:SS duration.
+# Other options depends on which mode is set to extract the timestamps.
+# video_start_times and video_times_from_filename can be used toghether. In this case, video_start_times
+# will override any time parsed from the filename.
+# When video_times_from_filename is used, creation_time tag from all videos are ignored.
+#
+# For 'split' - dive_1_20251115T102530123456_FullHD.mp4 --> 2025-11-15T10:25:30.123456
+# video_times_from_filename:
+#   mode: "split"
+#   format: "%Y%m%dT%H%M%S%f"
+#   separator: "_" # the separator used to split the filename
+#   group_number: 3 # starts from 1. Select the third part between "_"
+#
+# For 'range' - dive01_2025.11.15_10.25.30-FullHD.mp4 --> 2025-11-15T10:25:30
+# video_times_from_filename:
+#   mode: "range"
+#   format: "%Y.%m.%d_%H.%M.%S"
+#   start_char: 8 # timestamp starts at the 8th char of the filename
+#   end_char: 26 #  timestamp ends at the 26th char of the filename
+#
+# For 'regex' - dive1_20251115T102530-FullHD.mp4 --> 2025-11-15T10:25:30
+# video_times_from_filename:
+#   mode: "regex"
+#   format: "%Y%m%dT%H%M%S"
+#   regex: "_(.*?)-" # extract first entry between "_" and "-"
 
 
 # ---------------------------------------------------------------------------
