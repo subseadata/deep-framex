@@ -67,7 +67,7 @@ rules:
   - interval_s: 10.0
 ```
 
-Rules can be restricted to UTC time windows (`periods`), sensor value ranges (`constraints`), or both. Periods and constraints on the **same rule intersect**; separate rules are **unioned**.
+Every rule samples on one of two grids: `interval_s` (seconds between frames) or `interval_m` (metres of travel between frames, see **Distance-based extraction**). Rules can be restricted to UTC time windows (`periods`), sensor value ranges (`constraints`), or both. Periods and constraints on the **same rule intersect**; separate rules are **unioned**.
 
 ```yaml
 rules:
@@ -79,6 +79,9 @@ rules:
     periods:
       - start: "2025-11-15T10:25:00Z"
         end:   "2025-11-15T10:30:00Z"
+
+  # one frame every 25 m travelled, wherever the vehicle sped up or slowed down
+  - interval_m: 25.0
 
   # dense while depth is between 1000 and 1200 m
   - interval_s: 5.0
@@ -168,6 +171,42 @@ Each entry can also carry:
 
 A single `mappings` block plus `--data` is the one-file shorthand for a one-entry `sensors` list. Both forms are supported; use whichever fits.
 
+### Distance-based extraction
+
+A rule can sample by how far the vehicle travelled instead of by how much time passed. This keeps frames evenly spaced along the ground track even when the vehicle sped up, slowed down, or held station — a 30-second interval gives you a wall of near-identical frames every time the ROV hovers over one rock.
+
+Along-track distance is derived from the position log at import time; you never compute it or supply it. Map `latitude` and `longitude` on a `sensors` entry (or in the `mappings` shorthand) and the tool accumulates the great-circle distance between consecutive fixes into a derived column named `distance_along`, in metres, counting from that file's first fix:
+
+```yaml
+sensors:
+  - file: nav.csv
+    timestamp: utc_time
+    latitude: latitude
+    longitude: longitude
+
+rules:
+  - interval_m: 25.0     # one frame every 25 m travelled
+    periods:             # periods, constraints and dedupe all work as usual
+      - start: "2025-04-11T19:00:00Z"
+        end:   "2025-04-11T19:30:00Z"
+    constraints:
+      - column: depth
+        min: 1000
+        max: 1200
+```
+
+Only the two coordinates are required — a nav log with nothing else in it is a complete distance source. Each distance point is converted back to the instant it was reached, interpolated between the surrounding fixes, so distance rules and time rules meet on the same UTC timeline: their frames are unioned and deduplicated exactly as before, and every later stage (sensor interpolation, filenames, metadata) sees an ordinary timestamped frame.
+
+A few things worth knowing:
+
+- **Distance is horizontal travel only.** The measure is 2D, so a vertical water column is worth 0 m — a descending vehicle that holds station is not travelling.
+- **`interval_m` and `interval_s` are mutually exclusive within one rule.** Write two rules to sample both ways; the union is deduplicated, so a timestamp claimed by both is written once.
+- **The grid is anchored at session start**, not at the nav file's first fix, so a log that began an hour before the dive does not shift your frames to arbitrary points on the grid.
+- **`distance_along` is a reserved column name** and may not be mapped. If your log already has a distance column, map it under another name (e.g. `nav_distance`) — the derived value is what `interval_m` uses, and it is what filenames and XMP can reference.
+- **Distance is cumulative, so reversing counts.** A run out and back along the same line is charged for both legs.
+- **One nav file per run.** Only one sensor file may map `latitude` and `longitude`, and distance counts from that file's first fix. Running a directory of videos from several dives against one nav log is wrong unless all those videos share that log — run each dive separately with its own nav file.
+- A rule that lands no frames — the vehicle travelled less than one interval inside the selected windows, or the nav data does not overlap the video — warns rather than failing silently. Use `--plan` to inspect the spacing before extracting.
+
 ### Timestamp formats
 
 Your timestamp column is read as ISO 8601 by default — `2025-11-15T10:25:00Z`, a space in place of the `T`, and any number of fractional-second digits all work, with or without an offset. Dot-separated dates (`15.11.2025 10:25:00`) are recognised too.
@@ -201,7 +240,7 @@ Timestamps with no timezone marker are assumed to be UTC, and the tool warns onc
 |---|---|---|
 | `metadata` | — | Arbitrary key/value pairs embedded in every frame (EXIF, IPTC, XMP, iFDO) |
 | `filename_template` | `{utc}_{video_stem}.jpg` | Output filename pattern — variables: `{utc}`, `{video_stem}`, `{offset_s}`, any mapping key, any metadata key |
-| `initial_offset_s` | `0.0` | Shift the sampling grid this many seconds from session start |
+| `initial_offset_s` | `0.0` | Shift the `interval_s` sampling grid this many seconds from session start; `interval_m` rules are not affected |
 | `interpolation_window` | `2` | Sensor rows to use on each side when interpolating values; each `sensors` entry may override it |
 | `stream_output` | `false` | Write each frame immediately instead of buffering per video |
 | `max_workers` | `1` | Worker processes for extraction; `>1` extracts multiple videos in parallel |
@@ -299,6 +338,8 @@ Each extraction run produces:
 | `*.jpg` | Extracted frames with EXIF, IPTC, and XMP metadata embedded |
 | `ifdo.json` | iFDO dataset manifest — one entry per frame |
 | `biigle_metadata.csv` | Metadata CSV ready to upload to BIIGLE |
+
+Any sensor column you map, plus the derived `distance_along`, is written to the custom XMP namespace on each frame and is available to `filename_template`. iFDO and BIIGLE only carry the standard fields listed in the routing table under **Sensor mappings**; `distance_along` is deliberately not added to either, because BIIGLE's own `distance_to_ground` column means something else.
 
 
 ## Library API Examples
@@ -422,7 +463,7 @@ src/deep_framex/
 ├── extraction/      # open video containers and decode frames
 ├── metadata/        # embed metadata into image files (EXIF, IPTC, XMP), iFDO and BIIGLE manifests
 ├── output/          # write frames to disk
-└── utils/           # coordinate conversion, timestamp parsing, raw-log converters
+└── utils/           # coordinate conversion, along-track distance, timestamp parsing, raw-log converters
 ```
 
 ### Pipeline stages
@@ -432,8 +473,8 @@ src/deep_framex/
 | Spec parser | `config/spec_parser.py` | Reads YAML into `ExtractionSpec`; validates all rules, periods, constraints, and datetime strings |
 | Video discovery | `config/video_discovery.py` | Resolves a directory or file list into probed `VideoFile` objects with UTC start time and duration |
 | Session database | `db/session_db.py` | In-memory SQLite used only during planning; holds sensor readings and the frame plan; discarded after `plan()` returns |
-| Data importer | `data/importer.py` | Loads the sensor CSV into the session database; only mapped columns are imported |
-| Planner | `planning/planner.py` | Processes rules against the database — intersects periods and constraints, samples at `interval_s`, unions across rules, interpolates sensor values — produces self-contained `VideoExtractionPlan` objects |
+| Data importer | `data/importer.py` | Loads the sensor CSV into the session database; only mapped columns are imported, plus the derived `distance_along` for a source that maps latitude and longitude |
+| Planner | `planning/planner.py` | Processes rules against the database — intersects periods and constraints, samples at `interval_s` or `interval_m`, unions across rules, interpolates sensor values — produces self-contained `VideoExtractionPlan` objects |
 | Extractor | `extraction/frame_extractor.py` | Generator that yields `ExtractedFrame` objects from a single plan; seeks to each planned offset and decodes the closest frame; no database access |
 | Metadata writer | `metadata/apply_metadata.py` | Builds EXIF, IPTC, and XMP byte blocks for a single frame; called at save time, embedded in a single Pillow write |
 | iFDO manifest | `metadata/ifdo.py` | Writes `ifdo.json` sidecar once per run; one entry per frame, keyed by filename |
@@ -448,6 +489,7 @@ src/deep_framex/
 
 ## User Story Functionality (I want to...)
 - extract frames from video at a defined time interval *(e.g., 1 every 5 seconds, 1 every 10 seconds)*
+- extract frames from video at a defined distance along track *(e.g., 1 every 25 m, so frames stay evenly spaced when the vehicle speeds up, slows down, or holds station)*
 - extract frames from video during specific time periods *(e.g., from 00:30:00-03:20:00 video time or 22:30:00-22:45:00 UTC)*
 - extract frames from video during specific environmental conditions *(e.g., get frames only for depths from 1000-1200m, only from temperatures 2-3C)*
 - extract frames under a mix of the above conditions *(e.g., 1 every 5 seconds while <1000m, 1 every 10 seconds while <500m, 1 every second from 12:00:00-13:00:00 UTC)*

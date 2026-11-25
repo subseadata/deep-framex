@@ -8,7 +8,7 @@ from pathlib import Path
 
 import av
 from numpy.typing import NDArray
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # TODO: add @field_validator for arbitrary types once dependencies are installed:
 #   - Video.container (av.container.InputContainer) — check open, has video stream
@@ -45,6 +45,12 @@ class VideoSession(CustomBaseModel):
 # Sensor data models
 # ---------------------------------------------------------------------------
 
+# Canonical name of the derived along-track distance column, in metres.  Owned by
+# the importer, which computes it for any source mapping both latitude and
+# longitude; it may not be mapped by hand.
+DISTANCE_COLUMN = "distance_along"
+
+
 class ColumnMappings(CustomBaseModel):
     """Tells the tool which CSV columns to read and what to call them.
 
@@ -68,6 +74,11 @@ class ColumnMappings(CustomBaseModel):
     fields; using these exact names triggers automatic routing to EXIF GPS
     tags and iFDO manifest fields.  Any additional entries the user supplies
     (e.g. temperature, salinity) are accepted and written to XMP.
+
+    distance_along is not a mappable name.  It is derived automatically for any
+    source that maps both latitude and longitude, as the cumulative horizontal
+    distance travelled from that file's first fix in metres, and rules using
+    interval_m depend on it being derived.
     """
 
     model_config = ConfigDict(extra='allow')
@@ -147,9 +158,23 @@ class ExtractionRule(CustomBaseModel):
         min: float | None = None
         max: float | None = None
 
-    interval_s: float
+    # Exactly one of these two must be set: interval_s samples the video clock,
+    # interval_m samples distance travelled along the nav track.  They are
+    # exclusive within a rule because one rule resolves to one sampling grid,
+    # but a spec may mix both kinds and their frames are unioned as usual.
+    interval_s: float | None = None
+    interval_m: float | None = None
     periods: list[TimePeriod] = Field(default_factory=list)         # if empty, rule applies to full session
     constraints: list[SensorConstraint] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _exactly_one_interval(self):
+        if (self.interval_s is None) == (self.interval_m is None):
+            raise ValueError(
+                "an extraction rule needs exactly one of 'interval_s' (one frame every N "
+                "seconds of video time) or 'interval_m' (one frame every N metres travelled)"
+            )
+        return self
 
 
 class ExtractionSpec(CustomBaseModel):

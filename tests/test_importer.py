@@ -1,3 +1,4 @@
+import math
 import pytest
 import sqlite3
 from pathlib import Path
@@ -5,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from deep_framex.data.importer import import_csv
 from deep_framex.db.session_db import create_session_db
 from deep_framex.models.core import ColumnMappings
+from deep_framex.utils.distance import EARTH_RADIUS_M
 
 
 # Fixture: fresh in-memory DB for each test.
@@ -193,3 +195,98 @@ def test_per_file_time_shift_is_independent(conn, tmp_path):
 
     assert shifted.utc_start == datetime(2025, 10, 15, 9, 57, 0, tzinfo=timezone.utc)
     assert plain.utc_start == datetime(2025, 10, 15, 10, 0, 0, tzinfo=timezone.utc)
+
+
+# --- derived along-track distance ------------------------------------------
+
+# Reference: one degree of latitude on the module's sphere, metres.
+DEGREE_M = math.radians(1.0) * EARTH_RADIUS_M
+
+# Fixture: a nav log running north at 1e-4 degrees of latitude per second.
+@pytest.fixture
+def nav_csv(tmp_path):
+    p = tmp_path / "nav.csv"
+    p.write_text(
+        "Timestamp,Lat,Lon\n"
+        "2025-10-15T10:00:00Z,27.0000,-165.0\n"
+        "2025-10-15T10:00:01Z,27.0001,-165.0\n"
+        "2025-10-15T10:00:02Z,27.0002,-165.0\n"
+    )
+    return p
+
+
+def _distances(conn, table="sensor_readings"):
+    """Stored distance_along values, oldest fix first."""
+    return [
+        row[0]
+        for row in conn.execute(
+            f'SELECT distance_along FROM "{table}" ORDER BY timestamp'
+        )
+    ]
+
+
+# A source with both coordinates gains distance_along as a column, starting at 0
+# and accumulating the distance between its fixes.
+def test_distance_along_is_derived(conn, nav_csv):
+    dataset = import_csv(
+        nav_csv, conn, ColumnMappings(timestamp="Timestamp", latitude="Lat", longitude="Lon")
+    )
+    assert dataset.columns == ["latitude", "longitude", "distance_along"]
+    stored = _distances(conn)
+    assert stored[0] == 0.0
+    assert stored[1] == pytest.approx(DEGREE_M * 1e-4, rel=1e-9)
+    assert stored[2] == pytest.approx(2 * DEGREE_M * 1e-4, rel=1e-9)
+
+
+# A source with only one of the two coordinates has no position to walk, so it
+# gets no distance column.
+def test_distance_along_needs_both_coordinates(conn, nav_csv):
+    lat_only = import_csv(
+        nav_csv, conn, ColumnMappings(timestamp="Timestamp", latitude="Lat"),
+        table="sensor_readings_0",
+    )
+    assert "distance_along" not in lat_only.columns
+    stored_columns = [row[1] for row in conn.execute("PRAGMA table_info(sensor_readings_0)")]
+    assert "distance_along" not in stored_columns
+
+
+# The distance a row carries belongs to that row's fix, so an unsorted file
+# accumulates in time order, not file order.
+def test_distance_follows_time_not_row_order(conn, tmp_path):
+    p = tmp_path / "unsorted_nav.csv"
+    p.write_text(
+        "Timestamp,Lat,Lon\n"
+        "2025-10-15T10:00:02Z,27.0002,-165.0\n"
+        "2025-10-15T10:00:00Z,27.0000,-165.0\n"
+        "2025-10-15T10:00:01Z,27.0001,-165.0\n"
+    )
+    import_csv(
+        p, conn, ColumnMappings(timestamp="Timestamp", latitude="Lat", longitude="Lon")
+    )
+    rows = conn.execute(
+        "SELECT timestamp, distance_along FROM sensor_readings ORDER BY timestamp"
+    ).fetchall()
+    assert [row[1] for row in rows] == pytest.approx(
+        [0.0, DEGREE_M * 1e-4, 2 * DEGREE_M * 1e-4], rel=1e-9
+    )
+
+
+# A clock correction moves timestamps, not positions, so the distance values are
+# unchanged — they just travel with the shifted rows.
+def test_distance_survives_clock_correction(conn, nav_csv):
+    import_csv(
+        nav_csv, conn,
+        ColumnMappings(timestamp="Timestamp", latitude="Lat", longitude="Lon"),
+        time_shift=timedelta(minutes=90),
+    )
+    assert _distances(conn) == pytest.approx([0.0, DEGREE_M * 1e-4, 2 * DEGREE_M * 1e-4])
+
+
+# distance_along is the tool's own name, not a column to read from a CSV.
+def test_mapping_distance_along_is_rejected(conn, nav_csv):
+    with pytest.raises(ValueError, match="reserved"):
+        import_csv(
+            nav_csv, conn,
+            ColumnMappings(timestamp="Timestamp", latitude="Lat", longitude="Lon",
+                           distance_along="Lon"),
+        )
