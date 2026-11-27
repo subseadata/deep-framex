@@ -18,6 +18,7 @@ VIDEO_EXTENSIONS = {".mp4", ".mov", ".mpg"}
 def discover_videos(
     source: Path | list[Path],
     start_times: dict[str, datetime] | None = None,
+    filename_parser: dict | None = None,
 ) -> list[VideoFile]:
     """Resolve a source to a list of probed VideoFiles.
 
@@ -32,6 +33,7 @@ def discover_videos(
                      basename is present here is clocked from this mapping
                      instead of its creation_time tag.  Keys that match no
                      discovered file are warned about and ignored.
+        filename_parser: configuration for parsing UTC timestamps from filenames.
 
     Returns:
         List of probed VideoFile objects (unsorted).
@@ -47,7 +49,7 @@ def discover_videos(
     start_times = start_times or {}
 
     if isinstance(source, list):
-        videos = _probe_file_list(source, start_times)
+        videos = _probe_file_list(source, start_times, filename_parser)
     else:
         if not source.exists():
             raise FileNotFoundError(f"Video source not found: {source}")
@@ -56,7 +58,7 @@ def discover_videos(
                 f"{source} is a file, not a directory. "
                 "To use a single video file, wrap it in a list: [path]"
             )
-        videos = _probe_directory(source, start_times)
+        videos = _probe_directory(source, start_times, filename_parser)
 
     unused = sorted(set(start_times) - {v.path.name for v in videos})
     if unused:
@@ -72,12 +74,14 @@ def discover_videos(
 def _probe_directory(
     directory: Path,
     start_times: dict[str, datetime],
+    filename_parser: dict | None = None,
 ) -> list[VideoFile]:
     """Discover and probe all recognised video files in a directory.
 
     Args:
         directory: path to an existing directory.
         start_times: filename -> UTC start time overrides.
+        filename_parser: configuration for parsing UTC timestamps from filenames.
 
     Returns:
         List of probed VideoFile objects.
@@ -91,18 +95,20 @@ def _probe_directory(
             f"No recognised video files found in {directory}. "
             f"Supported extensions: {sorted(VIDEO_EXTENSIONS)}"
         )
-    return [probe_video(p, start_times.get(p.name)) for p in paths]
+    return [probe_video(p, start_times.get(p.name), filename_parser) for p in paths]
 
 
 def _probe_file_list(
     paths: list[Path],
     start_times: dict[str, datetime],
+    filename_parser: dict | None = None,
 ) -> list[VideoFile]:
     """Probe an explicit list of video file paths.
 
     Args:
         paths: list of paths to video files.
         start_times: filename -> UTC start time overrides.
+        filename_parser: configuration for parsing UTC timestamps from filenames.
 
     Returns:
         List of probed VideoFile objects, in the same order as input.
@@ -120,5 +126,5 @@ def _probe_file_list(
                 f"Unrecognised video extension {path.suffix!r} for {path}. "
                 f"Supported extensions: {sorted(VIDEO_EXTENSIONS)}"
             )
-        result.append(probe_video(path, start_times.get(path.name)))
+        result.append(probe_video(path, start_times.get(path.name), filename_parser))
     return result

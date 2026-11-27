@@ -94,7 +94,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
     try:
         spec = spec_from_file(Path(args.spec))
-        session = create_video_session(discover_videos(video_source, spec.video_start_times))
+        session = create_video_session(discover_videos(video_source, spec.video_start_times, spec.video_times_from_filename))
         conn = create_session_db()
 
         if args.data and spec.mappings is None:
